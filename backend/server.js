@@ -10,6 +10,8 @@ const connectDB = require('./config/db');
 const { apiLimiter, webhookLimiter } = require('./middleware/rateLimiter');
 const { setSocketIO } = require('./services/notificationService');
 const { startBackupService } = require('./services/backupService');
+const { scheduleAgentBriefing } = require('./crons/agentBriefingJob');
+const { scheduleFollowUps } = require('./crons/followUpJob');
 const logger = require('./utils/logger');
 
 // Import routes
@@ -96,6 +98,10 @@ const start = async () => {
 
         // Start automated daily backups
         startBackupService();
+        // Start enterprise daily agent AI briefings
+        scheduleAgentBriefing();
+        // Start enterprise automated lead nurturing
+        scheduleFollowUps();
     });
 };
 

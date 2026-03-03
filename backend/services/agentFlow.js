@@ -193,8 +193,13 @@ const showAgentLeads = async (phone, agent) => {
         msg += `No leads assigned yet. New leads will appear here.`;
     } else {
         leads.forEach((l, i) => {
-            msg += `${i + 1}. *${l.customerId?.name || 'Unknown'}* ${l.isHighValue ? '💎' : ''}\n` +
-                `   💰 ${formatCurrency(l.budget)} | 📍 ${l.location}\n` +
+            const fireEmoji = l.aiScore > 75 ? '🔥' : (l.aiScore > 50 ? '⚡' : '');
+            const scoreStr = l.aiScore > 0 ? `[Score: ${l.aiScore}/100]` : '';
+            const personaStr = l.buyerPersona !== 'undecided' ? ` | 👤 ${l.buyerPersona}` : '';
+
+            msg += `${i + 1}. *${l.customerId?.name || 'Unknown'}* ${l.isHighValue ? '💎' : ''} ${fireEmoji}\n` +
+                `   💰 ${formatCurrency(l.budget)} | 📍 ${l.location}${personaStr}\n` +
+                `   ${scoreStr} Urgency: ${l.urgency || 'low'}\n` +
                 `   Status: ${l.status} | ID: ${l._id}\n\n`;
         });
         msg += `\nTo update: _update lead <ID> contacted_`;
@@ -387,7 +392,26 @@ const updateLeadStatus = async (phone, leadId, status) => {
         if (!lead) {
             return whatsappService.sendTextMessage(phone, `❌ Lead not found.`);
         }
-        lead.status = status.toLowerCase().replace(/ /g, '_');
+
+        const cleanStatus = status.toLowerCase().replace(/ /g, '_');
+        lead.status = cleanStatus;
+
+        // Automated Visit Tracking
+        if (['visited', 'site_visit_done', 'visit_done'].includes(cleanStatus)) {
+            // Need to update Agent stats if it wasn't already marked visited
+            if (!lead.siteVisitDate) {
+                lead.siteVisitDate = new Date();
+
+                if (lead.agentId) {
+                    const agent = await Agent.findById(lead.agentId);
+                    if (agent) {
+                        agent.totalVisits = (agent.totalVisits || 0) + 1;
+                        await agent.save();
+                    }
+                }
+            }
+        }
+
         await lead.save();
         await whatsappService.sendTextMessage(phone, `✅ Lead updated to *${status}*`);
     } catch (e) {

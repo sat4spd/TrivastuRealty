@@ -26,7 +26,7 @@ const transcribeAudio = async (mediaId) => {
         const form = new FormData();
         form.append('file', audioBuffer, { filename: 'voice.ogg', contentType: 'audio/ogg' });
         form.append('model', 'whisper-1');
-        form.append('language', 'en'); // Auto-detect would work too
+        // Removed language restriction to allow auto-detect for Hindi/Regional languages
 
         const response = await axios.post(
             'https://api.openai.com/v1/audio/transcriptions',

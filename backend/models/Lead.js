@@ -21,6 +21,11 @@ const leadSchema = new mongoose.Schema({
     siteVisitDate: { type: Date },
     siteVisitImages: [{ type: String }],
     isHighValue: { type: Boolean, default: false },
+
+    // Enterprise: Agent Intelligence
+    aiScore: { type: Number, default: 0, min: 0, max: 100 },
+    urgency: { type: String, enum: ['low', 'medium', 'high', 'immediate'], default: 'low' },
+    buyerPersona: { type: String, enum: ['investor', 'end_user', 'undecided'], default: 'undecided' },
 }, { timestamps: true });
 
 leadSchema.index({ status: 1 });

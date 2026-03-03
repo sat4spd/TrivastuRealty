@@ -20,6 +20,8 @@ const agentSchema = new mongoose.Schema({
     approvedAt: { type: Date },
     totalDeals: { type: Number, default: 0 },
     totalCommission: { type: Number, default: 0 },
+    totalVisits: { type: Number, default: 0 },
+    aiRating: { type: Number, default: 5.0, min: 1.0, max: 5.0 }, // Dynamic rating based on conversion speed
 }, { timestamps: true });
 
 agentSchema.index({ status: 1 });

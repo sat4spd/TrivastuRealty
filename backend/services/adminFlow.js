@@ -4,6 +4,7 @@ const Property = require('../models/Property');
 const Lead = require('../models/Lead');
 const whatsappService = require('./whatsappService');
 const { formatCurrency } = require('../utils/helpers');
+const { parseAdminCommand } = require('./llmService');
 const logger = require('../utils/logger');
 
 // ── ADMIN MAIN MESSAGE HANDLER ──
@@ -19,50 +20,63 @@ const handleAdminMessage = async (phone, text, user) => {
         return handleAdminAddPropertyFlow(phone, text, user);
     }
 
-    // ── Commands ──
-    if (['hi', 'hello', 'menu', 'start', 'hey'].includes(lower)) {
-        return showAdminMenu(phone);
+    // Parse natural language command with LLM
+    const command = await parseAdminCommand(text);
+
+    switch (command.action) {
+        case 'stats': return showStats(phone);
+        case 'pending': return showPending(phone);
+        case 'leads': return showRecentLeads(phone);
+        case 'agents': return showAgentsList(phone);
+        case 'properties': return showProperties(phone);
+        case 'add_agent': return startAddAgent(phone, user);
+        case 'add_property': return startAddProperty(phone, user);
+
+        case 'approve_agent':
+            if (command.phone) return approveAgent(phone, command.phone);
+            break;
+        case 'reject_agent':
+            if (command.phone) return rejectAgent(phone, command.phone);
+            break;
+        case 'approve_property':
+            if (command.id) return approveProperty(phone, command.id);
+            break;
+
+        case 'update_lead':
+            if (command.id && command.value) return updateLeadStatus(phone, command.id, command.value);
+            break;
+        case 'update_property':
+            if (command.id && command.field && command.value) return updatePropertyField(phone, command.id, command.field, command.value);
+            break;
+
+        case 'search_customer':
+            if (command.phone) return searchCustomerProfile(phone, command.phone);
+            break;
+
+        case 'menu': return showAdminMenu(phone);
     }
 
-    if (lower === 'stats' || lower === 'dashboard' || lower === '1') {
-        return showStats(phone);
-    }
+    // Fallbacks (legacy manual triggers)
+    if (['hi', 'hello', 'menu', 'start', 'hey'].includes(lower)) return showAdminMenu(phone);
+    if (lower === '1') return showStats(phone);
+    if (lower === '2') return showPending(phone);
+    if (lower === '3') return showRecentLeads(phone);
+    if (lower === '4') return showAgentsList(phone);
+    if (lower === '5') return startAddAgent(phone, user);
+    if (lower === '6') return showProperties(phone);
+    if (lower === '7') return startAddProperty(phone, user);
 
-    if (lower === 'pending' || lower === '2') {
-        return showPending(phone);
+    // Explicit old commands
+    if (lower.startsWith('approve +91')) return approveAgent(phone, text.substring(8).trim());
+    if (lower.startsWith('reject +91')) return rejectAgent(phone, text.substring(7).trim());
+    if (lower.startsWith('approve property ')) return approveProperty(phone, text.substring(17).trim());
+    if (lower.startsWith('update property ')) {
+        const parts = text.split(' ');
+        if (parts.length >= 4) return updatePropertyField(phone, parts[2], parts[3], parts.slice(4).join(' '));
     }
-
-    if (lower === 'leads' || lower === '3') {
-        return showRecentLeads(phone);
-    }
-
-    if (lower === 'agents' || lower === '4') {
-        return showAgentsList(phone);
-    }
-
-    if (lower === 'add agent' || lower === '5') {
-        return startAddAgent(phone, user);
-    }
-
-    if (lower === 'properties' || lower === '6') {
-        return showProperties(phone);
-    }
-
-    if (lower === 'add property' || lower === '7') {
-        return startAddProperty(phone, user);
-    }
-
-    // Approve/Reject agent: "approve +91..." or "reject +91..."
-    if (lower.startsWith('approve ')) {
-        return approveAgent(phone, text.substring(8).trim());
-    }
-    if (lower.startsWith('reject ')) {
-        return rejectAgent(phone, text.substring(7).trim());
-    }
-
-    // Approve/Reject property: "approve property <id>"
-    if (lower.startsWith('approve property ')) {
-        return approveProperty(phone, text.substring(17).trim());
+    if (lower.startsWith('update lead ')) {
+        const parts = text.split(' ');
+        if (parts.length >= 4) return updateLeadStatus(phone, parts[2], parts.slice(3).join(' '));
     }
 
     // Default: show menu
@@ -73,7 +87,7 @@ const handleAdminMessage = async (phone, text, user) => {
 const showAdminMenu = async (phone) => {
     await whatsappService.sendTextMessage(phone,
         `👑 *ADMIN PANEL — Trivastu Realty*\n\n` +
-        `Type a number or command:\n\n` +
+        `Type a number or ask naturally:\n\n` +
         `1️⃣ *stats* — Dashboard overview\n` +
         `2️⃣ *pending* — Pending approvals\n` +
         `3️⃣ *leads* — Recent leads\n` +
@@ -81,451 +95,264 @@ const showAdminMenu = async (phone) => {
         `5️⃣ *add agent* — Register new agent\n` +
         `6️⃣ *properties* — View properties\n` +
         `7️⃣ *add property* — Add new property\n\n` +
-        `📋 Quick commands:\n` +
-        `• _approve +91XXXXXXXXXX_ — Approve agent\n` +
-        `• _reject +91XXXXXXXXXX_ — Reject agent\n` +
-        `• _approve property <ID>_ — Approve property`
+        `📋 *Advanced Commands:*\n` +
+        `• _update property <ID> price 45L_\n` +
+        `• _update lead <ID> contacted_\n` +
+        `• _search customer <phone>_`
     );
 };
 
-// ── STATS ──
+// ... (stats, pending, leads, agents blocks remain mostly unchanged) ...
+// ── STATS (ENTERPRISE DASHBOARD) ──
 const showStats = async (phone) => {
-    const [totalLeads, newLeads, totalAgents, activeAgents, pendingAgents,
-        totalProperties, approvedProperties, pendingProperties] = await Promise.all([
-            Lead.countDocuments(),
-            Lead.countDocuments({ status: 'new' }),
-            Agent.countDocuments(),
-            Agent.countDocuments({ status: 'approved' }),
-            Agent.countDocuments({ status: 'pending' }),
-            Property.countDocuments(),
-            Property.countDocuments({ status: 'approved' }),
-            Property.countDocuments({ status: 'pending' }),
-        ]);
+    const { getDashboardStats } = require('./analyticsService');
+    const stats = await getDashboardStats();
 
-    const highValueLeads = await Lead.countDocuments({ isHighValue: true });
+    let msg = `📊 *ENTERPRISE DASHBOARD*\n\n`;
 
-    await whatsappService.sendTextMessage(phone,
-        `📊 *DASHBOARD STATS*\n\n` +
-        `🎯 *Leads:*\n` +
-        `• Total: ${totalLeads}\n` +
-        `• New: ${newLeads}\n` +
-        `• High-value (>50L): ${highValueLeads}\n\n` +
-        `👥 *Agents:*\n` +
-        `• Total: ${totalAgents}\n` +
-        `• Active: ${activeAgents}\n` +
-        `• Pending: ${pendingAgents}\n\n` +
-        `🏠 *Properties:*\n` +
-        `• Total: ${totalProperties}\n` +
-        `• Approved: ${approvedProperties}\n` +
-        `• Pending: ${pendingProperties}\n\n` +
-        `Type *MENU* for options.`
-    );
+    msg += `🎯 *Pipeline Overview*\n`;
+    msg += `• Total Leads: ${stats.pipeline.total}\n`;
+    msg += `• Active: ${stats.pipeline.active}\n`;
+    msg += `• Closed Won: ${stats.pipeline.closedWon} (${stats.pipeline.conversionRate})\n\n`;
+
+    msg += `🧠 *AI Intelligence*\n`;
+    msg += `• 🔥 Hot Leads (>75 Score): ${stats.aiIntelligence.hotLeads}\n`;
+    msg += `• ⚡ Immediate Urgency: ${stats.aiIntelligence.immediateUrgency}\n`;
+    msg += `• 👤 Persona (Investors): ${stats.aiIntelligence.personas['investor'] || 0}\n\n`;
+
+    msg += `🏠 *Inventory Insights*\n`;
+    msg += `• Active Properties: ${stats.inventory.totalActive}\n`;
+    msg += `• Aging (>30 days): ${stats.inventory.agingOver30Days}\n\n`;
+
+    if (stats.inventory.demandHeatmap.length > 0) {
+        msg += `🗺️ *Top Demand Locations*\n`;
+        stats.inventory.demandHeatmap.forEach((loc, i) => {
+            msg += `  ${i + 1}. ${loc.location} (${loc.requests} reqs)\n`;
+        });
+        msg += `\n`;
+    }
+
+    if (stats.topAgents.length > 0) {
+        msg += `🏆 *Top Agents*\n`;
+        stats.topAgents.slice(0, 3).forEach((a, i) => {
+            msg += `  ${i + 1}. ${a.name} (⭐ ${a.aiRating.toFixed(1)} | 🤝 ${a.totalDeals})\n`;
+        });
+    }
+
+    await whatsappService.sendTextMessage(phone, msg);
 };
 
-// ── PENDING APPROVALS ──
 const showPending = async (phone) => {
     const pendingAgents = await Agent.find({ status: 'pending' }).populate('userId');
     const pendingProperties = await Property.find({ status: 'pending' });
-
     let msg = `⏳ *PENDING APPROVALS*\n\n`;
-
-    if (pendingAgents.length > 0) {
-        msg += `👥 *Agents (${pendingAgents.length}):*\n`;
-        pendingAgents.forEach((a, i) => {
-            msg += `${i + 1}. ${a.name} — ${a.phone}\n   Exp: ${a.experience || 'N/A'}\n   _approve ${a.phone}_\n\n`;
-        });
-    } else {
-        msg += `👥 No pending agents ✅\n\n`;
-    }
-
-    if (pendingProperties.length > 0) {
-        msg += `🏠 *Properties (${pendingProperties.length}):*\n`;
-        pendingProperties.forEach((p, i) => {
-            msg += `${i + 1}. ${p.title} — ${formatCurrency(p.price)}\n   📍 ${p.location}\n   ID: _${p._id}_\n   _approve property ${p._id}_\n\n`;
-        });
-    } else {
-        msg += `🏠 No pending properties ✅\n`;
-    }
-
-    msg += `\nType *MENU* for options.`;
+    msg += `👥 *Agents (${pendingAgents.length}):*\n`;
+    pendingAgents.forEach((a, i) => msg += `${i + 1}. ${a.name} — ${a.phone}\n   _approve ${a.phone}_\n\n`);
+    msg += `🏠 *Properties (${pendingProperties.length}):*\n`;
+    pendingProperties.forEach((p, i) => msg += `${i + 1}. ${p.title} (${p._id})\n   _approve property ${p._id}_\n\n`);
     await whatsappService.sendTextMessage(phone, msg);
 };
 
-// ── RECENT LEADS ──
 const showRecentLeads = async (phone) => {
     const leads = await Lead.find().sort({ createdAt: -1 }).limit(10).populate('customerId');
-
     let msg = `🎯 *RECENT LEADS (top 10)*\n\n`;
-
-    if (leads.length === 0) {
-        msg += `No leads yet.\n`;
-    } else {
-        leads.forEach((l, i) => {
-            const name = l.customerId?.name || 'Unknown';
-            msg += `${i + 1}. *${name}* ${l.isHighValue ? '💎' : ''}\n` +
-                `   💰 ${formatCurrency(l.budget)} | 📍 ${l.location}\n` +
-                `   🏠 ${l.propertyType} | Status: ${l.status}\n\n`;
-        });
-    }
-
-    msg += `Type *MENU* for options.`;
+    leads.forEach((l, i) => msg += `${i + 1}. *${l.customerId?.name || 'Unknown'}* | ${l.status}\n   💰 ${formatCurrency(l.budget)} | 📍 ${l.location}\n   ID: ${l._id}\n\n`);
     await whatsappService.sendTextMessage(phone, msg);
 };
 
-// ── LIST AGENTS ──
 const showAgentsList = async (phone) => {
     const agents = await Agent.find().sort({ createdAt: -1 });
-
     let msg = `👥 *ALL AGENTS*\n\n`;
-
-    if (agents.length === 0) {
-        msg += `No agents registered yet.\n`;
-    } else {
-        agents.forEach((a, i) => {
-            const statusEmoji = { approved: '✅', pending: '⏳', suspended: '🚫', rejected: '❌' };
-            msg += `${i + 1}. *${a.name}* ${statusEmoji[a.status] || ''}\n` +
-                `   📱 ${a.phone} | Deals: ${a.totalDeals || 0}\n` +
-                `   Commission: ${a.commissionPercent}%\n\n`;
-        });
-    }
-
-    msg += `Type *add agent* to register a new agent.\nType *MENU* for options.`;
+    agents.forEach((a, i) => msg += `${i + 1}. *${a.name}* (${a.status})\n   📱 ${a.phone} | Comm: ${a.commissionPercent}%\n\n`);
     await whatsappService.sendTextMessage(phone, msg);
 };
 
-// ── ADD AGENT FLOW ──
+// ── ADD AGENT FLOW (FIXED) ──
 const startAddAgent = async (phone, user) => {
-    user.conversationState = {
-        flow: 'admin_add_agent',
-        step: 'ask_phone',
-        data: {},
-    };
+    user.conversationState = { flow: 'admin_add_agent', step: 'ask_phone', data: {} };
     await user.save();
-
-    await whatsappService.sendTextMessage(phone,
-        `👥 *Add New Agent*\n\n📱 Enter the agent's WhatsApp number:\n\n(e.g., +918105180539)\n\nType *cancel* to go back.`
-    );
+    await whatsappService.sendTextMessage(phone, `👥 *Add New Agent*\n\n📱 Enter the agent's WhatsApp number:\n\n(e.g., +918105180539)\n\nType *cancel* to go back.`);
 };
 
 const handleAdminAddAgentFlow = async (phone, text, user) => {
     if (text.toLowerCase() === 'cancel') {
-        user.conversationState = {};
-        await user.save();
+        user.conversationState = {}; await user.save();
         return showAdminMenu(phone);
     }
 
-    const step = user.conversationState.step;
+    const d = user.conversationState.data;
 
-    switch (step) {
+    switch (user.conversationState.step) {
         case 'ask_phone': {
-            let agentPhone = text.replace(/\s/g, '');
-            if (!agentPhone.startsWith('+')) {
-                if (agentPhone.startsWith('91') && agentPhone.length === 12) agentPhone = '+' + agentPhone;
-                else if (agentPhone.length === 10) agentPhone = '+91' + agentPhone;
-            }
-            user.conversationState.data.phone = agentPhone;
-            user.conversationState.step = 'ask_name';
-            await user.save();
-            await whatsappService.sendTextMessage(phone, `📱 Phone: *${agentPhone}* ✅\n\n👤 Enter agent's *full name*:`);
+            let p = text.replace(/\s/g, '');
+            if (!p.startsWith('+')) p = p.length === 10 ? '+91' + p : (p.length === 12 ? '+' + p : p);
+            d.phone = p; user.conversationState.step = 'ask_name'; await user.save();
+            await whatsappService.sendTextMessage(phone, `📱 Phone: *${p}* ✅\n\n👤 Enter agent's *full name*:`);
             break;
         }
         case 'ask_name': {
-            user.conversationState.data.name = text;
-            user.conversationState.step = 'ask_commission';
-            await user.save();
-            await whatsappService.sendTextMessage(phone, `👤 Name: *${text}* ✅\n\n💰 Enter *commission percentage* (default: 2):`);
+            d.name = text; user.conversationState.step = 'ask_experience'; await user.save();
+            await whatsappService.sendTextMessage(phone, `👤 Name: *${text}* ✅\n\n🏢 Enter *experience* (e.g., 5 years):`);
+            break;
+        }
+        case 'ask_experience': {
+            d.experience = text; user.conversationState.step = 'ask_area'; await user.save();
+            await whatsappService.sendTextMessage(phone, `🏢 Experience: *${text}* ✅\n\n📍 Enter *primary area* (e.g., Ranchi):`);
+            break;
+        }
+        case 'ask_area': {
+            d.area = text; user.conversationState.step = 'ask_commission'; await user.save();
+            await whatsappService.sendTextMessage(phone, `📍 Area: *${text}* ✅\n\n💰 Enter *commission percentage* (default: 2):`);
             break;
         }
         case 'ask_commission': {
-            const commission = parseFloat(text) || 2;
-            const data = user.conversationState.data;
+            const comm = parseFloat(text) || 2;
+            let agentUser = await User.findOne({ phone: d.phone });
+            if (!agentUser) agentUser = await User.create({ phone: d.phone, name: d.name, role: 'agent' });
+            else { agentUser.role = 'agent'; agentUser.name = d.name; await agentUser.save(); }
 
-            // Create user + agent
-            let agentUser = await User.findOne({ phone: data.phone });
-            if (!agentUser) {
-                agentUser = await User.create({
-                    phone: data.phone,
-                    name: data.name,
-                    role: 'agent',
-                });
-            } else {
-                agentUser.role = 'agent';
-                agentUser.name = data.name;
-                await agentUser.save();
-            }
-
-            const existingAgent = await Agent.findOne({ phone: data.phone });
+            let existingAgent = await Agent.findOne({ phone: d.phone });
             if (existingAgent) {
-                existingAgent.status = 'approved';
-                existingAgent.name = data.name;
-                existingAgent.commissionPercent = commission;
-                await existingAgent.save();
+                existingAgent.status = 'approved'; existingAgent.name = d.name;
+                existingAgent.experience = d.experience; existingAgent.operatingArea = d.area;
+                existingAgent.commissionPercent = comm; await existingAgent.save();
             } else {
                 await Agent.create({
-                    userId: agentUser._id,
-                    phone: data.phone,
-                    name: data.name,
-                    status: 'approved',
-                    commissionPercent: commission,
+                    userId: agentUser._id, phone: d.phone, name: d.name, status: 'approved',
+                    experience: d.experience, operatingArea: d.area, commissionPercent: comm,
                 });
             }
 
-            user.conversationState = {};
-            await user.save();
-
-            await whatsappService.sendTextMessage(phone,
-                `✅ *Agent Added Successfully!*\n\n` +
-                `👤 ${data.name}\n📱 ${data.phone}\n💰 Commission: ${commission}%\n` +
-                `Status: Approved ✅\n\nType *MENU* for options.`
-            );
-
-            // Notify the agent
-            try {
-                await whatsappService.sendTextMessage(data.phone,
-                    `🎉 *Congratulations!*\n\nYou've been registered as an agent with *Trivastu Realty*.\n\n` +
-                    `Type *MENU* to see your agent dashboard.`
-                );
-            } catch (e) { logger.debug('Could not notify new agent:', e.message); }
+            user.conversationState = {}; await user.save();
+            await whatsappService.sendTextMessage(phone, `✅ *Agent Added Successfully!*\n👤 ${d.name}\n📱 ${d.phone}\n📍 ${d.area}\n💰 Commission: ${comm}%`);
+            try { await whatsappService.sendTextMessage(d.phone, `🎉 *Congratulations!*\nYou've been registered as an agent with *Trivastu Realty*.\nType *MENU* to see your dashboard.`); } catch (e) { }
             break;
         }
     }
 };
 
-// ── LIST PROPERTIES ──
-const showProperties = async (phone) => {
-    const properties = await Property.find({ status: 'approved' }).sort({ createdAt: -1 }).limit(10);
+// ── ADMIN NEW COMMANDS ──
 
-    let msg = `🏠 *PROPERTIES (Approved)*\n\n`;
-    if (properties.length === 0) {
-        msg += `No approved properties yet.\n`;
-    } else {
-        properties.forEach((p, i) => {
-            msg += `${i + 1}. *${p.title}*\n` +
-                `   📍 ${p.location} | 💰 ${formatCurrency(p.price)}\n` +
-                `   🏗 ${p.type} | 📐 ${p.area || 'N/A'}\n` +
-                `   📸 ${p.images?.length || 0} photos | 🎬 ${p.videos?.length || 0} videos\n\n`;
-        });
-    }
+const searchCustomerProfile = async (phone, customerPhone) => {
+    let cp = customerPhone.replace(/\s/g, '');
+    if (!cp.startsWith('+')) cp = cp.length === 10 ? '+91' + cp : '+' + cp;
 
-    msg += `Type *add property* to add new.\nType *MENU* for options.`;
+    const customer = await User.findOne({ phone: cp });
+    if (!customer) return whatsappService.sendTextMessage(phone, `❌ Customer not found: ${cp}`);
+
+    const leads = await Lead.find({ customerId: customer._id });
+    let msg = `👤 *CUSTOMER PROFILE*\n\nName: ${customer.name}\nPhone: ${customer.phone}\nBudget: ${formatCurrency(customer.budget)}\nLocation: ${customer.locationPreference}\n\n*Leads:*\n`;
+    leads.forEach(l => msg += `ID: ${l._id} | Status: ${l.status}\n`);
+
     await whatsappService.sendTextMessage(phone, msg);
 };
 
-// ── ADD PROPERTY FLOW ──
-const startAddProperty = async (phone, user) => {
-    user.conversationState = {
-        flow: 'admin_add_property',
-        step: 'ask_title',
-        data: { images: [], videos: [] },
-    };
-    await user.save();
+const updateLeadStatus = async (phone, leadId, status) => {
+    try {
+        const lead = await Lead.findById(leadId.trim());
+        if (!lead) return whatsappService.sendTextMessage(phone, `❌ Lead not found.`);
+        lead.status = status.toLowerCase().replace(/ /g, '_');
+        await lead.save();
+        await whatsappService.sendTextMessage(phone, `✅ Lead ${leadId} updated to *${status}*`);
+    } catch { await whatsappService.sendTextMessage(phone, `❌ Invalid lead ID.`); }
+};
 
-    await whatsappService.sendTextMessage(phone,
-        `🏠 *Add New Property*\n\n📝 Enter property *title*:\n\n(e.g., "3BHK Luxury Villa in Bhopal")\n\nType *cancel* to go back.`
-    );
+const updatePropertyField = async (phone, propertyId, field, value) => {
+    try {
+        const prop = await Property.findById(propertyId.trim());
+        if (!prop) return whatsappService.sendTextMessage(phone, `❌ Property not found.`);
+
+        let parsedVal = value;
+        if (field === 'price') {
+            const v = value.toLowerCase();
+            if (v.includes('cr')) parsedVal = parseFloat(v) * 10000000;
+            else if (v.includes('l')) parsedVal = parseFloat(v) * 100000;
+            else parsedVal = parseFloat(v);
+        }
+
+        prop[field] = parsedVal;
+        await prop.save();
+        await whatsappService.sendTextMessage(phone, `✅ Property ${propertyId}\n*${field}* updated to *${parsedVal}*`);
+    } catch { await whatsappService.sendTextMessage(phone, `❌ Failed to update property.`); }
+};
+
+// ── ADD PROPERTY FLOW ──
+const showProperties = async (phone) => {
+    const properties = await Property.find({ status: 'approved' }).sort({ createdAt: -1 }).limit(10);
+    let msg = `🏠 *PROPERTIES (Approved)*\n\n`;
+    properties.forEach((p, i) => msg += `${i + 1}. *${p.title}* (${p._id})\n   📍 ${p.location} | 💰 ${formatCurrency(p.price)}\n\n`);
+    await whatsappService.sendTextMessage(phone, msg);
+};
+
+const startAddProperty = async (phone, user) => {
+    user.conversationState = { flow: 'admin_add_property', step: 'ask_title', data: { images: [], videos: [] } };
+    await user.save();
+    await whatsappService.sendTextMessage(phone, `🏠 *Add New Property*\n\n📝 Enter property *title*:\n\nType *cancel* to go back.`);
 };
 
 const handleAdminAddPropertyFlow = async (phone, text, user) => {
-    if (text.toLowerCase() === 'cancel') {
-        user.conversationState = {};
-        await user.save();
-        return showAdminMenu(phone);
-    }
-
-    const step = user.conversationState.step;
-
-    switch (step) {
+    if (text.toLowerCase() === 'cancel') { user.conversationState = {}; await user.save(); return showAdminMenu(phone); }
+    const d = user.conversationState.data;
+    switch (user.conversationState.step) {
         case 'ask_title':
-            user.conversationState.data.title = text;
-            user.conversationState.step = 'ask_type';
-            await user.save();
-            await whatsappService.sendInteractiveButtons(phone,
-                `📝 Title: *${text}* ✅\n\n🏠 Select property *type*:`,
-                [
-                    { id: 'prop_apartment', title: '🏢 Apartment' },
-                    { id: 'prop_villa', title: '🏡 Villa' },
-                    { id: 'prop_plot', title: '🌳 Plot/Land' },
-                ]
-            );
-            break;
-
-        case 'ask_type': {
-            let ptype = text.toLowerCase();
-            if (ptype.includes('apartment')) ptype = 'apartment';
-            else if (ptype.includes('villa')) ptype = 'villa';
-            else if (ptype.includes('plot') || ptype.includes('land')) ptype = 'plot';
-            else if (ptype.includes('commercial')) ptype = 'commercial';
-
-            user.conversationState.data.type = ptype;
-            user.conversationState.step = 'ask_price';
-            await user.save();
-            await whatsappService.sendTextMessage(phone, `🏠 Type: *${ptype}* ✅\n\n💰 Enter *price* (e.g., 50L, 1.2Cr):`);
-            break;
-        }
-
-        case 'ask_price': {
-            const lower = text.toLowerCase().replace(/,/g, '').replace(/₹/g, '').trim();
-            let price = 0;
-            const crMatch = lower.match(/([\d.]+)\s*cr/);
-            const lMatch = lower.match(/([\d.]+)\s*l/);
-            const numMatch = lower.match(/([\d.]+)/);
-            if (crMatch) price = parseFloat(crMatch[1]) * 10000000;
-            else if (lMatch) price = parseFloat(lMatch[1]) * 100000;
-            else if (numMatch) price = parseFloat(numMatch[1]);
-
-            user.conversationState.data.price = price;
-            user.conversationState.step = 'ask_location';
-            await user.save();
-            await whatsappService.sendTextMessage(phone, `💰 Price: *${formatCurrency(price)}* ✅\n\n📍 Enter *location*:`);
-            break;
-        }
-
+            d.title = text; user.conversationState.step = 'ask_type'; await user.save();
+            await whatsappService.sendTextMessage(phone, `📝 Title: *${text}* ✅\n\n🏠 Type: (apartment/villa/plot/commercial/farmhouse)`); break;
+        case 'ask_type':
+            d.type = text.toLowerCase(); user.conversationState.step = 'ask_price'; await user.save();
+            await whatsappService.sendTextMessage(phone, `🏠 Type: *${d.type}* ✅\n\n💰 Enter *price* (e.g., 50L, 1.2Cr):`); break;
+        case 'ask_price':
+            const v = text.toLowerCase();
+            d.price = v.includes('cr') ? parseFloat(v) * 10000000 : (v.includes('l') ? parseFloat(v) * 100000 : parseFloat(v));
+            user.conversationState.step = 'ask_location'; await user.save();
+            await whatsappService.sendTextMessage(phone, `💰 Price: *${formatCurrency(d.price)}* ✅\n\n📍 Enter *location*:`); break;
         case 'ask_location':
-            user.conversationState.data.location = text;
-            user.conversationState.step = 'ask_area';
-            await user.save();
-            await whatsappService.sendTextMessage(phone, `📍 Location: *${text}* ✅\n\n📐 Enter *area* (e.g., 1200 sqft, 2400 sqft):`);
-            break;
-
+            d.location = text; user.conversationState.step = 'ask_area'; await user.save();
+            await whatsappService.sendTextMessage(phone, `📍 Location: *${text}* ✅\n\n📐 Context *area* (e.g., 1200 sqft):`); break;
         case 'ask_area':
-            user.conversationState.data.area = text;
-            user.conversationState.step = 'ask_description';
-            await user.save();
-            await whatsappService.sendTextMessage(phone, `📐 Area: *${text}* ✅\n\n📝 Enter a *description*:\n\n(Short paragraph about the property)`);
-            break;
-
-        case 'ask_description': {
-            user.conversationState.data.description = text;
-            user.conversationState.step = 'ask_media';
-            await user.save();
-            await whatsappService.sendTextMessage(phone,
-                `📝 Description saved ✅\n\n` +
-                `📸 Now send *images/videos* of the property.\n\n` +
-                `• Send photos one by one\n` +
-                `• Send videos for virtual tour\n` +
-                `• Type *done* when finished`
-            );
-            break;
-        }
-
-        case 'ask_media': {
+            d.area = parseFloat(text) || 0; user.conversationState.step = 'ask_description'; await user.save();
+            await whatsappService.sendTextMessage(phone, `📐 Area: *${text}* ✅\n\n📝 Enter *description*:`); break;
+        case 'ask_description':
+            d.description = text; user.conversationState.step = 'ask_media'; await user.save();
+            await whatsappService.sendTextMessage(phone, `📝 Description saved ✅\n\n📸 Send images/videos, or type *done*`); break;
+        case 'ask_media':
             if (text.toLowerCase() === 'done' || text.toLowerCase() === 'skip') {
-                // Save property
-                const d = user.conversationState.data;
-                const property = await Property.create({
-                    title: d.title,
-                    type: d.type,
-                    price: d.price,
-                    location: d.location,
-                    area: d.area,
-                    description: d.description,
-                    images: d.images || [],
-                    videos: d.videos || [],
-                    status: 'approved', // Admin adds = auto-approved
-                    addedBy: user._id,
-                });
-
-                user.conversationState = {};
-                await user.save();
-
-                await whatsappService.sendTextMessage(phone,
-                    `✅ *Property Added Successfully!*\n\n` +
-                    `🏠 ${d.title}\n` +
-                    `📍 ${d.location} | 💰 ${formatCurrency(d.price)}\n` +
-                    `🏗 ${d.type} | 📐 ${d.area}\n` +
-                    `📸 ${(d.images || []).length} photos | 🎬 ${(d.videos || []).length} videos\n` +
-                    `Status: Approved ✅\n\nType *MENU* for options.`
-                );
-            } else {
-                await whatsappService.sendTextMessage(phone,
-                    `📸 Send images/videos, or type *done* when finished.`
-                );
-            }
+                await Property.create({ title: d.title, type: d.type, price: d.price, location: d.location, area: d.area, description: d.description, images: d.images || [], videos: d.videos || [], status: 'approved', addedBy: user._id });
+                user.conversationState = {}; await user.save();
+                await whatsappService.sendTextMessage(phone, `✅ *Property Added Successfully!*\n🏠 ${d.title}\n📍 ${d.location} | 💰 ${formatCurrency(d.price)}`);
+            } else await whatsappService.sendTextMessage(phone, `📸 Send images/videos, or type *done*`);
             break;
-        }
     }
 };
 
-// ── APPROVE/REJECT AGENT ──
 const approveAgent = async (phone, agentPhone) => {
-    let cleanedPhone = agentPhone.replace(/\s/g, '');
-    if (!cleanedPhone.startsWith('+')) {
-        if (cleanedPhone.startsWith('91') && cleanedPhone.length === 12) cleanedPhone = '+' + cleanedPhone;
-        else if (cleanedPhone.length === 10) cleanedPhone = '+91' + cleanedPhone;
-    }
-
-    const agent = await Agent.findOne({ phone: cleanedPhone });
-    if (!agent) {
-        return whatsappService.sendTextMessage(phone, `❌ Agent not found: ${cleanedPhone}`);
-    }
-
-    agent.status = 'approved';
-    await agent.save();
-
-    await whatsappService.sendTextMessage(phone, `✅ Agent *${agent.name}* (${cleanedPhone}) approved!`);
-
-    try {
-        await whatsappService.sendTextMessage(cleanedPhone,
-            `🎉 *Congratulations ${agent.name}!*\n\nYour agent registration has been *approved*.\n\nType *MENU* to access your agent dashboard.`
-        );
-    } catch (e) { logger.debug('Could not notify agent:', e.message); }
+    let cp = agentPhone.replace(/\s/g, '');
+    if (!cp.startsWith('+')) cp = cp.length === 10 ? '+91' + cp : '+' + cp;
+    const agent = await Agent.findOne({ phone: cp });
+    if (!agent) return whatsappService.sendTextMessage(phone, `❌ Agent not found: ${cp}`);
+    agent.status = 'approved'; await agent.save();
+    await whatsappService.sendTextMessage(phone, `✅ Agent *${agent.name}* approved!`);
+    try { await whatsappService.sendTextMessage(cp, `🎉 *Congratulations!*\nYour registration is approved. Type *MENU* to access dashboard.`); } catch (e) { }
 };
 
 const rejectAgent = async (phone, agentPhone) => {
-    let cleanedPhone = agentPhone.replace(/\s/g, '');
-    if (!cleanedPhone.startsWith('+')) {
-        if (cleanedPhone.startsWith('91') && cleanedPhone.length === 12) cleanedPhone = '+' + cleanedPhone;
-        else if (cleanedPhone.length === 10) cleanedPhone = '+91' + cleanedPhone;
-    }
-
-    const agent = await Agent.findOne({ phone: cleanedPhone });
-    if (!agent) {
-        return whatsappService.sendTextMessage(phone, `❌ Agent not found: ${cleanedPhone}`);
-    }
-
-    agent.status = 'rejected';
-    await agent.save();
-
-    await whatsappService.sendTextMessage(phone, `❌ Agent *${agent.name}* (${cleanedPhone}) rejected.`);
+    let cp = agentPhone.replace(/\s/g, '');
+    if (!cp.startsWith('+')) cp = cp.length === 10 ? '+91' + cp : '+' + cp;
+    const agent = await Agent.findOne({ phone: cp });
+    if (agent) { agent.status = 'rejected'; await agent.save(); await whatsappService.sendTextMessage(phone, `❌ Agent *${agent.name}* rejected.`); }
 };
 
-// ── APPROVE PROPERTY ──
 const approveProperty = async (phone, propertyId) => {
     try {
-        const property = await Property.findById(propertyId.trim());
-        if (!property) {
-            return whatsappService.sendTextMessage(phone, `❌ Property not found: ${propertyId}`);
-        }
-
-        property.status = 'approved';
-        await property.save();
-
-        await whatsappService.sendTextMessage(phone,
-            `✅ Property *${property.title}* approved!\n📍 ${property.location} | 💰 ${formatCurrency(property.price)}`
-        );
-    } catch (e) {
-        await whatsappService.sendTextMessage(phone, `❌ Invalid property ID: ${propertyId}`);
-    }
+        const prop = await Property.findById(propertyId.trim());
+        if (prop) { prop.status = 'approved'; await prop.save(); await whatsappService.sendTextMessage(phone, `✅ Property *${prop.title}* approved!`); }
+    } catch (e) { await whatsappService.sendTextMessage(phone, `❌ Invalid ID.`); }
 };
 
-// ── HANDLE MEDIA FROM ADMIN (for property uploads) ──
 const handleAdminMedia = async (phone, mediaKey, mediaType, user) => {
     if (user.conversationState?.flow === 'admin_add_property' && user.conversationState?.step === 'ask_media') {
-        if (mediaType === 'image') {
-            user.conversationState.data.images = user.conversationState.data.images || [];
-            user.conversationState.data.images.push(mediaKey);
-        } else if (mediaType === 'video') {
-            user.conversationState.data.videos = user.conversationState.data.videos || [];
-            user.conversationState.data.videos.push(mediaKey);
-        }
+        user.conversationState.data[mediaType === 'video' ? 'videos' : 'images'].push(mediaKey);
         await user.save();
-
-        const imgCount = (user.conversationState.data.images || []).length;
-        const vidCount = (user.conversationState.data.videos || []).length;
-        await whatsappService.sendTextMessage(phone,
-            `✅ ${mediaType === 'image' ? '📸 Photo' : '🎬 Video'} uploaded! (${imgCount} photos, ${vidCount} videos)\n\n` +
-            `Send more or type *done* to finish.`
-        );
+        await whatsappService.sendTextMessage(phone, `✅ ${mediaType} uploaded! Send more or type *done*`);
         return true;
     }
     return false;

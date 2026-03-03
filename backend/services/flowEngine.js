@@ -6,10 +6,7 @@ const whatsappService = require('./whatsappService');
 const { getSignedUrl, uploadBuffer } = require('./s3Service');
 const { parsePhone } = require('../utils/helpers');
 const logger = require('../utils/logger');
-const axios = require('axios');
 const { logChat } = require('./chatLogger');
-
-const GREETINGS = ['hi', 'hello', 'hey', 'hii', 'hiii', 'namaste', 'start'];
 
 // ── PROCESS TEXT MESSAGE ──
 const processMessage = async (phone, message, messageId) => {
@@ -26,8 +23,14 @@ const processMessage = async (phone, message, messageId) => {
         const { role, user, agent } = await detectRole(normalizedPhone);
         logger.info(`📩 Message from ${normalizedPhone} | Role: ${role} | Text: "${text.substring(0, 80)}"`);
 
-        // Log to Chat History
+        // Log to Chat History (System monitor)
         logChat(normalizedPhone, 'incoming', 'text', text);
+
+        // State recovery: If state object exists but is corrupted, empty it
+        if (user && user.conversationState && typeof user.conversationState !== 'object') {
+            user.conversationState = { flow: 'onboarding', step: 'menu', data: {} };
+            await user.save();
+        }
 
         switch (role) {
             case 'admin':
@@ -40,7 +43,7 @@ const processMessage = async (phone, message, messageId) => {
 
             case 'pending_agent':
                 await whatsappService.sendTextMessage(normalizedPhone,
-                    `⏳ Hi ${agent.name}! Your registration is *pending approval*.\n\nYou'll be notified once approved. 🙏`
+                    `⏳ Hi ${agent.name}! Your registration is *pending approval*.\nYou'll be notified once approved. 🙏`
                 );
                 break;
 
@@ -52,23 +55,23 @@ const processMessage = async (phone, message, messageId) => {
 
             case 'rejected_agent':
                 await whatsappService.sendTextMessage(normalizedPhone,
-                    `Your registration was not approved. Contact our office for details.`
+                    `Your agent registration was not approved. Contact our office for details.`
                 );
                 break;
 
             case 'customer':
-                // Check if in registration flow
                 if (user.conversationState?.flow === 'agent_registration') {
                     await handleAgentRegistrationFlow(normalizedPhone, text, user);
                 } else if (user.conversationState?.flow === 'onboarding' || user.conversationState?.step) {
                     await handleCustomerMessage(normalizedPhone, text, user);
                 } else {
-                    // Returning customer
+                    // Safety hatch: if missing state, treat as returning customer
                     const lower = text.toLowerCase();
                     if (lower === 'register as agent' || lower === 'agent registration') {
                         await handleAgentRegistration(normalizedPhone);
                     } else {
-                        await handleReturningCustomer(normalizedPhone, user);
+                        // Let customerFlow handle smart message routing via detectIntent
+                        await handleCustomerMessage(normalizedPhone, text, user);
                     }
                 }
                 break;
@@ -106,61 +109,42 @@ const processMessage = async (phone, message, messageId) => {
 const processMediaMessage = async (phone, mediaId, mediaType, caption, messageId) => {
     try {
         const normalizedPhone = parsePhone(phone);
-        const whatsappConfig = require('../config/whatsapp');
 
-        // Mark as read
         if (messageId) {
             await whatsappService.markAsRead(messageId).catch(() => { });
         }
 
-        // Detect role
         const { role, user, agent } = await detectRole(normalizedPhone);
         logger.info(`📎 Media from ${normalizedPhone} | Role: ${role} | Type: ${mediaType}`);
 
-        // Get URL first, then log it
-        const _mediaUrlForLog = await whatsappService.getMediaUrl(mediaId); // just for logging
+        const _mediaUrlForLog = await whatsappService.getMediaUrl(mediaId); // log only
         logChat(normalizedPhone, 'incoming', mediaType, caption || `[${mediaType}]`, _mediaUrlForLog || '');
 
-        // Download media from WhatsApp
         const mediaUrl = await whatsappService.getMediaUrl(mediaId);
-        if (!mediaUrl) {
-            await whatsappService.sendTextMessage(normalizedPhone, `❌ Could not process the ${mediaType}. Please try again.`);
-            return;
-        }
+        if (!mediaUrl) return whatsappService.sendTextMessage(normalizedPhone, `❌ Could not process the ${mediaType}.`);
 
         const mediaBuffer = await whatsappService.downloadMedia(mediaUrl);
-        if (!mediaBuffer) {
-            await whatsappService.sendTextMessage(normalizedPhone, `❌ Could not download the ${mediaType}. Please try again.`);
-            return;
-        }
+        if (!mediaBuffer) return whatsappService.sendTextMessage(normalizedPhone, `❌ Could not download the ${mediaType}.`);
 
-        // Upload to S3
+        const { uploadBuffer } = require('./s3Service');
         const ext = mediaType === 'video' ? 'mp4' : 'jpg';
         const s3Key = `properties/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
         const contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
 
-        await uploadBuffer(mediaBuffer, s3Key, contentType);
-        logger.info(`📤 Media uploaded to S3: ${s3Key}`);
-
-        // Route to appropriate handler
         if (role === 'admin') {
+            await uploadBuffer(mediaBuffer, s3Key, contentType);
             const handled = await handleAdminMedia(normalizedPhone, s3Key, mediaType, user);
-            if (!handled) {
-                await whatsappService.sendTextMessage(normalizedPhone,
-                    `📎 Media received & stored!\n\nTo add it to a property, type *add property* first.`
-                );
-            }
+            if (!handled) await whatsappService.sendTextMessage(normalizedPhone, `📎 Media received & stored!\n\nTo add it to a property, type *add property* first.`);
         } else if (role === 'approved_agent') {
+            await uploadBuffer(mediaBuffer, s3Key, contentType);
             const handled = await handleAgentMedia(normalizedPhone, s3Key, mediaType, user, agent);
-            if (!handled) {
-                await whatsappService.sendTextMessage(normalizedPhone,
-                    `📎 Media received!\n\nTo add it to a property, type *add property* from the agent menu.`
-                );
-            }
+            if (!handled) await whatsappService.sendTextMessage(normalizedPhone, `📎 Media received!\n\nTo add it to a property, type *add property* from menu.`);
+        } else if (role === 'customer' && mediaType === 'image') {
+            // Enterprise AI Feature: Visual Property Discovery
+            const { handleCustomerImage } = require('./customerFlow');
+            await handleCustomerImage(normalizedPhone, mediaBuffer, user);
         } else {
-            await whatsappService.sendTextMessage(normalizedPhone,
-                `📎 Thanks for sharing! If you'd like to share documents, our agent will assist you. Type *MENU* for options.`
-            );
+            await whatsappService.sendTextMessage(normalizedPhone, `📎 Thanks for sharing! Our agent will review this shortly.`);
         }
 
     } catch (error) {
@@ -174,44 +158,23 @@ const processVoiceMessage = async (phone, mediaId, messageId) => {
         const normalizedPhone = parsePhone(phone);
         const { transcribeAudio } = require('./voiceService');
 
-        // Mark as read
-        if (messageId) {
-            await whatsappService.markAsRead(messageId).catch(() => { });
-        }
+        if (messageId) await whatsappService.markAsRead(messageId).catch(() => { });
 
         logger.info(`🎤 Voice note from ${normalizedPhone}`);
-
-        // Transcribe voice
         const transcribedText = await transcribeAudio(mediaId);
 
-        // Log voice note (we use original media ID/URL for audio if we had it, but mostly we want the text)
         logChat(normalizedPhone, 'incoming', 'audio', transcribedText || '[Voice Note]');
 
         if (transcribedText && transcribedText.length > 0) {
-            // Send acknowledgment with transcription
-            await whatsappService.sendTextMessage(normalizedPhone,
-                `🎤 _I heard:_ "${transcribedText}"\n\n_Processing your message..._`
-            );
-
-            // Process as regular text message
+            await whatsappService.sendTextMessage(normalizedPhone, `🎤 _I heard:_ "${transcribedText}"\n\n_Processing your message..._`);
             await processMessage(normalizedPhone, transcribedText, messageId);
         } else {
-            // Transcription failed
-            await whatsappService.sendTextMessage(normalizedPhone,
-                `🎤 I received your voice message but couldn't understand it clearly.\n\n` +
-                `Could you please *type your message* instead? 🙏\n\n` +
-                `Or try speaking more clearly and send again.`
-            );
+            await whatsappService.sendTextMessage(normalizedPhone, `🎤 I couldn't understand the voice message. Could you please *type* instead? 🙏`);
         }
     } catch (error) {
         logger.error('Voice processing error:', error.message);
-        try {
-            await whatsappService.sendTextMessage(parsePhone(phone),
-                `🎤 Sorry, I couldn't process your voice note. Please type your message instead. 🙏`
-            );
-        } catch (e) { }
+        try { await whatsappService.sendTextMessage(parsePhone(phone), `🎤 Sorry, I couldn't process your voice note. Please type your message.`); } catch (e) { }
     }
 };
 
 module.exports = { processMessage, processMediaMessage, processVoiceMessage };
-

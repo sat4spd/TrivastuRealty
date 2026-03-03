@@ -1,10 +1,17 @@
 const User = require('../models/User');
 const Lead = require('../models/Lead');
+const Property = require('../models/Property');
 const whatsappService = require('./whatsappService');
-const { matchProperties, formatPropertyList } = require('./matchingEngine');
+const { searchByQuery, formatPropertyList } = require('./matchingEngine');
 const { notifyAdmin, ALERT_TYPES } = require('./notificationService');
-const { recommendProperties, generateResponse, parsePreferencesUpdate } = require('./llmService');
 const { formatCurrency, parsePhone } = require('../utils/helpers');
+const {
+    detectIntent,
+    extractEntities,
+    generateResponse,
+    parsePreferencesUpdate,
+    INTENTS
+} = require('./llmService');
 const logger = require('../utils/logger');
 
 const STEPS = {
@@ -12,14 +19,53 @@ const STEPS = {
     ASK_NAME: 'ask_name',
     ASK_BUDGET: 'ask_budget',
     ASK_LOCATION: 'ask_location',
-    ASK_MORE_LOCATIONS: 'ask_more_locations',
     ASK_TYPE: 'ask_type',
     ASK_TIMELINE: 'ask_timeline',
-    COMPLETE: 'complete',
     MENU: 'menu',
 };
 
-const GREETINGS = ['hi', 'hello', 'hey', 'hii', 'hiii', 'namaste', 'good morning', 'good afternoon', 'good evening', 'start'];
+// ── CUSTOMER IMAGE (VISUAL DISCOVERY) ──
+const handleCustomerImage = async (phone, imageBuffer, user) => {
+    try {
+        await whatsappService.sendTextMessage(phone, `📸 I received your image! Let me analyze it and find similar properties for you... 🔍`);
+
+        // Convert buffer to base64 for OpenAI Vision API
+        const base64Image = imageBuffer.toString('base64');
+        const { OpenAI } = require('openai');
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o", // Must use 4o for vision
+            messages: [
+                {
+                    role: "system",
+                    content: "You are an expert real estate AI. Analyze this image (it could be a house, floor plan, or room). Describe what kind of property it is, the vibe, and extract key searchable features (e.g. 'modern apartment', 'duplex villa', 'swimming pool', 'spacious balcony'). Keep it under 2 sentences."
+                },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: "What kind of property is this?" },
+                        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}`, detail: "low" } }
+                    ]
+                }
+            ],
+            max_tokens: 150,
+        });
+
+        const imageAnalysis = response.choices[0].message.content;
+        user.addToHistory('user', "[Sent an Image]");
+        user.addToHistory('assistant', `[AI Vision Analysis]: ${imageAnalysis}`);
+        await user.save();
+
+        // Feed the analysis back into the smart search to find matches
+        const fakeMessage = `I want a property that looks like this: ${imageAnalysis}`;
+        return handleSmartMessage(phone, fakeMessage, user);
+
+    } catch (e) {
+        logger.error('Vision API Error:', e.message);
+        await whatsappService.sendTextMessage(phone, `Sorry, I couldn't analyze the image right now. Please tell me what you're looking for in words!`);
+    }
+};
 
 // ── NEW CUSTOMER: First-time greeting ──
 const handleNewCustomer = async (phone) => {
@@ -37,12 +83,12 @@ const handleNewCustomer = async (phone) => {
         await user.save();
     }
 
-    await whatsappService.sendTextMessage(normalizedPhone,
-        `🏠 *Welcome to Trivastu Realty!* 🏠\n\n` +
-        `We're one of the fastest-growing real estate companies, helping you find your dream property.\n\n` +
-        `I'm your personal assistant and I'll help you explore properties that match your needs.\n\n` +
-        `To get started, please tell me your *full name*? 👤`
-    );
+    const welcomeMsg = `🏠 *Welcome to Trivastu Realty!* 🏠\n\nWe're one of the fastest-growing real estate companies in Jharkhand, helping you find your dream property.\n\nI'm ARIA, your personal AI assistant.\n\nTo get started, please tell me your *full name*? 👤`;
+
+    user.addToHistory('assistant', welcomeMsg);
+    await user.save();
+
+    await whatsappService.sendTextMessage(normalizedPhone, welcomeMsg);
 };
 
 // ── RETURNING CUSTOMER ──
@@ -53,7 +99,7 @@ const handleReturningCustomer = async (phone, user) => {
 
     let greeting = `👋 *Welcome back, ${user.name}!*\n\n`;
 
-    if (lastLead) {
+    if (lastLead && lastLead.budget > 0) {
         greeting += `📋 Your last enquiry:\n`;
         if (lastLead.propertyId) {
             greeting += `🏠 ${lastLead.propertyId.title} - ${formatCurrency(lastLead.propertyId.price)}\n`;
@@ -62,116 +108,167 @@ const handleReturningCustomer = async (phone, user) => {
         greeting += `💰 Budget: ${formatCurrency(lastLead.budget || user.budget)}\n\n`;
     }
 
-    greeting += `What would you like to do today?`;
+    greeting += `What would you like to explore today? You can ask me anything about properties, locations, or simply tell me your new requirements.`;
 
     user.conversationState = { flow: 'onboarding', step: STEPS.MENU, data: {} };
     user.lastInteraction = new Date();
+    user.addToHistory('assistant', greeting);
     await user.save();
 
     await whatsappService.sendInteractiveButtons(phone, greeting, [
-        { id: 'cust_view_properties', title: '🏠 View Properties' },
-        { id: 'cust_talk_agent', title: '👨‍💼 Talk to Agent' },
-        { id: 'cust_ask_ai', title: '🤖 Ask AI' },
+        { id: 'view_my_matches', title: '🏠 View My Matches' },
+        { id: 'schedule_call', title: '📞 Request Call' },
     ]);
 };
 
-// ── CUSTOMER MESSAGE HANDLER (onboarding + menu) ──
+// ── MAIN CUSTOMER MESSAGE HANDLER ──
 const handleCustomerMessage = async (phone, message, user) => {
     const state = user.conversationState;
     const text = message.trim();
-    const lower = text.toLowerCase();
 
-    // If user sends a greeting mid-flow, treat as greeting not data
-    if (GREETINGS.includes(lower) && state.step !== STEPS.MENU) {
-        // If user is in middle of onboarding and sends 'hi', show menu or restart
-        if (user.name && user.name !== 'Unknown') {
-            return handleReturningCustomer(phone, user);
+    // Log message
+    user.addToHistory('user', text);
+
+    // If still in onboarding flow
+    if (state.step && state.step !== STEPS.MENU) {
+        return handleOnboardingStep(phone, text, user);
+    }
+
+    // Default to Smart Intent Handler
+    return handleSmartMessage(phone, text, user);
+};
+
+// ── ONBOARDING FLOW ──
+const handleOnboardingStep = async (phone, text, user) => {
+    const lower = text.toLowerCase();
+    const state = user.conversationState;
+
+    // Safety hatch out of onboarding if they ask something complex
+    if (state.step !== STEPS.ASK_NAME && text.length > 20) {
+        // Assume they skipped standard answers and gave a full sentence
+        const entities = await extractEntities(text);
+        if (entities.budget || entities.location || entities.propertyType) {
+            if (entities.budget) user.budget = entities.budget;
+            if (entities.location) user.locationPreference = entities.location;
+            if (entities.propertyType) user.propertyType = entities.propertyType;
+
+            user.conversationState = { flow: 'onboarding', step: STEPS.MENU, data: {} };
+            await user.save();
+            return handleSmartMessage(phone, text, user);
         }
-        // Otherwise continue — they're new
     }
 
     switch (state.step) {
         case STEPS.ASK_NAME: {
-            // Validate name — must be at least 2 characters and not a greeting
-            if (lower.length < 2 || GREETINGS.includes(lower)) {
-                await whatsappService.sendTextMessage(phone,
-                    `Please tell me your *full name* (e.g., Rajesh Kumar) 👤`
-                );
+            if (lower.length < 2 || ['hi', 'hello'].includes(lower)) {
+                await sendAndSave(phone, user, `Please tell me your *full name* (e.g., Rajesh Kumar) 👤`);
                 return;
             }
             user.name = text;
             user.conversationState.step = STEPS.ASK_BUDGET;
             await user.save();
 
-            await whatsappService.sendTextMessage(phone,
+            await sendAndSave(phone, user,
                 `Nice to meet you, *${text}*! 🤝\n\n` +
                 `💰 What is your *budget* for the property?\n\n` +
-                `You can type:\n` +
-                `• _20L_ — for ₹20 Lakhs\n` +
-                `• _50L_ — for ₹50 Lakhs\n` +
-                `• _1Cr_ — for ₹1 Crore\n` +
-                `• _1.5Cr_ — for ₹1.5 Crore`
+                `(e.g., 20L, 50 Lakhs, 1.5Cr)`
             );
             break;
         }
 
         case STEPS.ASK_BUDGET: {
-            const budget = parseBudget(text);
+            // First check if they said something like "50 lakhs for a plot in Tupudana"
+            const entities = await extractEntities(text);
+
+            let budget = entities.budget || parseBudgetSimple(text);
+
             if (budget <= 0) {
-                await whatsappService.sendTextMessage(phone,
-                    `I didn't quite catch that. Please enter your budget like:\n• 30L\n• 50L\n• 1Cr\n• 75L`
-                );
+                await sendAndSave(phone, user, `I didn't quite catch that. Please enter your budget like: 30L, 50 Lakhs, or 1Cr`);
                 return;
             }
+
             user.budget = budget;
             user.conversationState.data.budget = budget;
             user.conversationState.step = STEPS.ASK_LOCATION;
+
+            // If we extracted other things, save them too
+            if (entities.location) user.locationPreference = entities.location;
+            if (entities.propertyType) user.propertyType = entities.propertyType;
+
             await user.save();
 
-            await whatsappService.sendTextMessage(phone,
-                `Great! Budget: *${formatCurrency(budget)}* ✅\n\n` +
-                `📍 Which *location(s)* are you interested in?\n\n` +
-                `You can mention *one or multiple* locations.\n` +
-                `Example: _Bhopal, Singhmore, Indore_`
-            );
+            if (user.locationPreference) {
+                // Skip asking location if they already provided it
+                user.conversationState.step = STEPS.ASK_TYPE;
+                await user.save();
+                await sendInteractiveAndSave(phone, user,
+                    `Got it! Budget: *${formatCurrency(budget)}*, Location: *${user.locationPreference}* ✅\n\n🏠 What *type of property* are you looking for?`,
+                    [
+                        { id: 'type_apartment', title: '🏢 Apartment/Flat' },
+                        { id: 'type_villa', title: '🏡 Villa/House' },
+                        { id: 'type_plot', title: '🌳 Plot/Land' },
+                    ]
+                );
+            } else {
+                await sendAndSave(phone, user,
+                    `Great! Budget: *${formatCurrency(budget)}* ✅\n\n` +
+                    `📍 Which *location(s)* in Jharkhand are you interested in?\n(e.g., Ranchi, Tupudana, Jamshedpur)`
+                );
+            }
             break;
         }
 
         case STEPS.ASK_LOCATION: {
-            // Store locations (could be comma-separated)
-            const locations = text.split(/[,;]/).map(l => l.trim()).filter(l => l.length > 1);
-            if (locations.length === 0) {
-                await whatsappService.sendTextMessage(phone,
-                    `Please enter at least one location, e.g., _Bhopal_ or _Singhmore, Indore_`
-                );
+            // They might say "Tupudana and Nagri"
+            const entities = await extractEntities(text);
+            const location = entities.location || text;
+
+            if (location.length < 3) {
+                await sendAndSave(phone, user, `Please enter a valid location (e.g., _Ranchi_ or _Tupudana_)`);
                 return;
             }
 
-            user.locationPreference = locations.join(', ');
-            user.conversationState.data.locations = locations;
+            user.locationPreference = location;
             user.conversationState.step = STEPS.ASK_TYPE;
+
+            if (entities.propertyType) user.propertyType = entities.propertyType;
+
             await user.save();
 
-            await whatsappService.sendInteractiveButtons(phone,
-                `📍 Location(s): *${locations.join(', ')}* ✅\n\n🏠 What *type of property* are you looking for?`,
-                [
-                    { id: 'type_apartment', title: '🏢 Apartment/Flat' },
-                    { id: 'type_villa', title: '🏡 Villa/House' },
-                    { id: 'type_plot', title: '🌳 Plot/Land' },
-                ]
-            );
+            if (user.propertyType) {
+                user.conversationState.step = STEPS.ASK_TIMELINE;
+                await user.save();
+                await sendInteractiveAndSave(phone, user,
+                    `📍 Location: *${location}* ✅\n🏠 Type: *${user.propertyType}* ✅\n\n⏰ When are you planning to purchase?`,
+                    [
+                        { id: 'timeline_immediate', title: '🔥 Immediately' },
+                        { id: 'timeline_3months', title: '📅 Within 3 months' },
+                        { id: 'timeline_6months', title: '📆 6+ months' },
+                    ]
+                );
+            } else {
+                await sendInteractiveAndSave(phone, user,
+                    `📍 Location: *${location}* ✅\n\n🏠 What *type of property* are you looking for?`,
+                    [
+                        { id: 'type_apartment', title: '🏢 Apartment/Flat' },
+                        { id: 'type_villa', title: '🏡 Villa/House' },
+                        { id: 'type_plot', title: '🌳 Plot/Land' },
+                    ]
+                );
+            }
             break;
         }
 
         case STEPS.ASK_TYPE: {
-            let propertyType = resolvePropertyType(text);
-            user.propertyType = propertyType;
-            user.conversationState.data.propertyType = propertyType;
+            const entities = await extractEntities(text);
+            const pType = entities.propertyType || resolvePropertyTypeLegacy(text);
+
+            user.propertyType = pType;
             user.conversationState.step = STEPS.ASK_TIMELINE;
             await user.save();
 
-            await whatsappService.sendInteractiveButtons(phone,
-                `🏠 Type: *${propertyType}* ✅\n\n⏰ When are you planning to purchase?`,
+            await sendInteractiveAndSave(phone, user,
+                `🏠 Type: *${pType}* ✅\n\n⏰ When are you planning to purchase?`,
                 [
                     { id: 'timeline_immediate', title: '🔥 Immediately' },
                     { id: 'timeline_3months', title: '📅 Within 3 months' },
@@ -186,420 +283,318 @@ const handleCustomerMessage = async (phone, message, user) => {
             if (lower.includes('immediate') || lower.includes('now')) timeline = 'Immediately';
             else if (lower.includes('3')) timeline = 'Within 3 months';
             else if (lower.includes('6')) timeline = 'Within 6 months';
-            else if (lower.includes('year') || lower.includes('12')) timeline = 'Within 1 year';
 
             user.timeline = timeline;
             user.conversationState = { flow: 'onboarding', step: STEPS.MENU, data: {} };
             await user.save();
 
+            // Calculate initial AI Score
+            const { calculateLeadScore } = require('./leadScoringEngine');
+            const scoreData = calculateLeadScore({ budget: user.budget, propertyType: user.propertyType }, user);
+
             // Create lead
-            const lead = await Lead.create({
+            const newLead = await Lead.create({
                 customerId: user._id,
                 budget: user.budget,
                 location: user.locationPreference,
                 propertyType: user.propertyType,
                 source: 'whatsapp',
+                aiScore: scoreData.aiScore,
+                urgency: scoreData.urgency,
+                buyerPersona: scoreData.buyerPersona,
             });
+
+            // Attempt automatic agent assignment based on location and load
+            const { assignAgentToLead } = require('./assignmentEngine');
+            const assignedAgentId = await assignAgentToLead(newLead);
 
             // Notify admin
             await notifyAdmin(
                 user.budget >= 5000000 ? ALERT_TYPES.HIGH_VALUE_LEAD : ALERT_TYPES.NEW_LEAD,
                 {
-                    name: user.name,
-                    phone: user.phone,
-                    budget: user.budget,
-                    location: user.locationPreference,
-                    propertyType: user.propertyType,
+                    name: user.name, phone: user.phone, budget: user.budget,
+                    location: user.locationPreference, propertyType: user.propertyType,
+                    aiScore: scoreData.aiScore,
+                    assignedTo: assignedAgentId || 'Unassigned',
                 }
             );
 
-            // Smart match properties
-            const matches = await matchProperties({
+            // Fetch matching properties instantly
+            const matches = await searchByQuery({
                 budget: user.budget,
                 location: user.locationPreference,
                 propertyType: user.propertyType,
             });
-            const listText = formatPropertyList(matches);
 
-            await whatsappService.sendTextMessage(phone,
-                `✅ *Registration Complete!*\n\n` +
+            // Update search context so follow-ups work
+            user.lastSearchContext = {
+                budget: user.budget,
+                location: user.locationPreference,
+                propertyType: user.propertyType,
+                updatedAt: new Date()
+            };
+            await user.save();
+
+            const completionMsg = `✅ *Registration Complete!*\n\n` +
                 `📋 *Your Profile:*\n` +
                 `👤 ${user.name}\n` +
-                `📱 ${user.phone}\n` +
-                `💰 ${formatCurrency(user.budget)}\n` +
-                `📍 ${user.locationPreference}\n` +
-                `🏠 ${user.propertyType}\n` +
-                `⏰ ${timeline}\n\n` +
+                `💰 ${formatCurrency(user.budget)}\n📍 ${user.locationPreference}\n🏠 ${user.propertyType}\n\n` +
                 (matches.length > 0
-                    ? `🏠 *Matching Properties:*\n\n${listText}\n\nReply with a property *number* for details!`
-                    : `We'll notify you when matching properties are available.`) +
-                `\n\nType *MENU* anytime for options! 📋`
-            );
+                    ? `*Here are the best properties for you right now:*\n\n${formatPropertyList(matches)}\n\nReply with a property *number* to see full details or ask me anything else!`
+                    : `I'll alert my team and notify you when matching properties arrive. Let me know if you want to change any preferences or ask a question!`);
+
+            await sendAndSave(phone, user, completionMsg);
             break;
         }
-
-        case STEPS.MENU:
-            await handleCustomerMenu(phone, text, user);
-            break;
-
-        default:
-            user.conversationState = { flow: 'onboarding', step: STEPS.MENU, data: {} };
-            await user.save();
-            await handleCustomerMenu(phone, text, user);
     }
 };
 
-// ── CUSTOMER MENU ──
-const handleCustomerMenu = async (phone, text, user) => {
-    const lower = text.toLowerCase();
-
-    if (GREETINGS.includes(lower) || lower === 'menu' || lower === 'options') {
-        await whatsappService.sendInteractiveButtons(phone,
-            `Hi *${user.name}*! 👋 How can I help you today?`,
-            [
-                { id: 'cust_view_properties', title: '🏠 View Properties' },
-                { id: 'cust_talk_agent', title: '👨‍💼 Talk to Agent' },
-                { id: 'cust_ask_ai', title: '🤖 Ask AI' },
-            ]
-        );
-        return;
-    }
-
-    if (lower.includes('propert') || lower.includes('cust_view_properties') || lower === '1') {
-        const matches = await matchProperties({
-            budget: user.budget,
-            location: user.locationPreference,
-            propertyType: user.propertyType,
-        });
-        const listText = formatPropertyList(matches);
-
-        if (matches.length === 0) {
-            await whatsappService.sendTextMessage(phone,
-                `Currently no properties match your criteria.\n\n` +
-                `We'll notify you as soon as we get new listings! 🔔\n\nType *MENU* for more options.`
-            );
-        } else {
-            await whatsappService.sendTextMessage(phone,
-                `🏠 *Properties for you:*\n\n${listText}\n\n` +
-                `Reply with the *number* (e.g., 1) for full details with photos! 📸\n\n` +
-                `Type *MENU* for more options.`
-            );
-        }
-        return;
-    }
-
-    // Property detail request (number 1-9)
-    const numMatch = lower.match(/^(\d+)$/);
-    if (numMatch) {
-        const Property = require('../models/Property');
-        const idx = parseInt(numMatch[1]) - 1;
-        const matches = await matchProperties({
+// ── SMART INTENT HANDLER ──
+// Used for all messages after onboarding is complete.
+const handleSmartMessage = async (phone, text, user) => {
+    // 1. Interactive button clicks (id-based)
+    if (text === 'view_my_matches') {
+        const matches = await searchByQuery({
             budget: user.budget,
             location: user.locationPreference,
             propertyType: user.propertyType,
         });
 
-        if (idx >= 0 && idx < matches.length) {
-            const prop = matches[idx];
-            let details = `🏠 *${prop.title}*\n\n` +
-                `📍 Location: ${prop.location}\n` +
-                `💰 Price: ${formatCurrency(prop.price)}\n` +
-                `🏗 Type: ${prop.type}\n` +
-                `📐 Area: ${prop.area || 'N/A'}\n` +
-                `🛏 Bedrooms: ${prop.bedrooms || 'N/A'}\n` +
-                `📝 ${prop.description || 'No description'}\n\n`;
-
-            await whatsappService.sendTextMessage(phone, details);
-
-            // Send property images if available
-            if (prop.images && prop.images.length > 0) {
-                const { getSignedUrl } = require('./s3Service');
-                for (let i = 0; i < Math.min(prop.images.length, 3); i++) {
-                    try {
-                        const url = await getSignedUrl(prop.images[i]);
-                        await whatsappService.sendMediaMessage(phone, 'image', url,
-                            `${prop.title} - Photo ${i + 1}`);
-                    } catch (err) {
-                        logger.error('Failed to send property image:', err.message);
-                    }
-                }
-            }
-
-            // Send property videos if available
-            if (prop.videos && prop.videos.length > 0) {
-                const { getSignedUrl } = require('./s3Service');
-                for (let i = 0; i < Math.min(prop.videos.length, 2); i++) {
-                    try {
-                        const url = await getSignedUrl(prop.videos[i]);
-                        await whatsappService.sendMediaMessage(phone, 'video', url,
-                            `${prop.title} - Video ${i + 1}`);
-                    } catch (err) {
-                        logger.error('Failed to send property video:', err.message);
-                    }
-                }
-            }
-
-            await whatsappService.sendInteractiveButtons(phone,
-                `Interested in this property?`,
-                [
-                    { id: `schedule_visit_${prop._id}`, title: '📅 Schedule Visit' },
-                    { id: 'cust_talk_agent', title: '📞 Talk to Agent' },
-                    { id: 'cust_view_properties', title: '🔙 Back to List' },
-                ]
-            );
-            return;
-        }
-    }
-
-    // Schedule visit
-    if (lower.includes('schedule_visit') || lower.includes('visit') || lower.includes('site visit')) {
-        await whatsappService.sendTextMessage(phone,
-            `📅 *Site Visit Request Received!*\n\n` +
-            `Our team will contact you within 2 hours to schedule your visit.\n\n` +
-            `👤 ${user.name}\n📱 ${user.phone}\n\nType *MENU* for more options.`
-        );
-        await notifyAdmin(ALERT_TYPES.SITE_VISIT_BOOKED, {
-            name: user.name,
-            phone: user.phone,
-            budget: user.budget,
-            location: user.locationPreference,
-        });
-        return;
-    }
-
-    if (lower.includes('agent') || lower.includes('cust_talk_agent') || lower === '2') {
-        await whatsappService.sendTextMessage(phone,
-            `👨‍💼 *Agent Request Submitted!*\n\nOur best agent will reach out to you shortly. 📞\n\nType *MENU* for more options.`
-        );
-        await notifyAdmin(ALERT_TYPES.NEW_LEAD, {
-            name: user.name, phone: user.phone, budget: user.budget,
-            location: user.locationPreference, propertyType: 'Agent requested',
-        });
-        return;
-    }
-
-    if (lower.includes('ai') || lower.includes('cust_ask_ai') || lower === '3') {
-        user.conversationState.data.aiMode = true;
+        // Save context
+        user.lastSearchContext = { budget: user.budget, location: user.locationPreference, propertyType: user.propertyType, updatedAt: new Date() };
         await user.save();
-        await whatsappService.sendTextMessage(phone,
-            `🤖 *AI Assistant Activated!*\n\n` +
-            `Ask me anything about:\n` +
-            `• Properties & pricing\n` +
-            `• Area details & amenities\n` +
-            `• Investment advice\n\n` +
-            `Type *MENU* to go back.`
-        );
+
+        const msg = matches.length > 0
+            ? `🏠 *Your Custom Matches:*\n\n${formatPropertyList(matches)}\n\nReply with a number for details!`
+            : `No exact matches for ${user.locationPreference} under ${formatCurrency(user.budget)}. Want to try a different location or budget?`;
+
+        await sendAndSave(phone, user, msg);
         return;
     }
 
-    // Fast check for preference update using LLM
-    if (state.step === STEPS.MENU && !user.conversationState.data?.aiMode && text.length > 5 && !lower.includes('cust_')) {
-        const currentPrefs = {
-            budget: user.budget,
-            locationPreference: user.locationPreference,
-            propertyType: user.propertyType,
-            timeline: user.timeline
-        };
-
-        const prefsUpdate = await parsePreferencesUpdate(text, currentPrefs);
-
-        if (prefsUpdate && prefsUpdate.isUpdate) {
-            let updated = false;
-            let changes = [];
-
-            if (prefsUpdate.budget && prefsUpdate.budget !== user.budget) {
-                user.budget = prefsUpdate.budget;
-                changes.push(`💰 Budget: ${formatCurrency(prefsUpdate.budget)}`);
-                updated = true;
-            }
-            if (prefsUpdate.locationPreference && prefsUpdate.locationPreference !== user.locationPreference) {
-                user.locationPreference = prefsUpdate.locationPreference;
-                changes.push(`📍 Location: ${prefsUpdate.locationPreference}`);
-                updated = true;
-            }
-            if (prefsUpdate.propertyType && prefsUpdate.propertyType !== user.propertyType) {
-                user.propertyType = prefsUpdate.propertyType;
-                changes.push(`🏠 Type: ${prefsUpdate.propertyType}`);
-                updated = true;
-            }
-            if (prefsUpdate.timeline && prefsUpdate.timeline !== user.timeline) {
-                user.timeline = prefsUpdate.timeline;
-                changes.push(`⏱ Timeline: ${prefsUpdate.timeline.replace('_', ' ')}`);
-                updated = true;
-            }
-
-            if (updated) {
-                await user.save();
-                await whatsappService.sendTextMessage(phone,
-                    `✅ *Preferences Updated!*\n\nI have automatically updated your search criteria:\n` +
-                    changes.map(c => `• ${c}`).join('\n') +
-                    `\n\nI will notify our agents to look for properties matching these new details. Type *MENU* to see options.`
-                );
-
-                // Also update admin
-                await notifyAdmin(ALERT_TYPES.CUSTOMER_UPDATED_PREFS || 'CUSTOMER_PREFS_UPDATED', {
-                    name: user.name,
-                    phone: user.phone,
-                    budget: user.budget,
-                    location: user.locationPreference
-                });
-                return;
-            }
-        }
-    }
-
-    if (lower === 'update' || lower === 'edit' || lower === 'change preferences') {
-        user.conversationState = { flow: 'onboarding', step: STEPS.ASK_BUDGET, data: {} };
-        await user.save();
-        await whatsappService.sendTextMessage(phone,
-            `Let's update your preferences! 📝\n\n💰 What is your *new budget*?`
-        );
+    if (text === 'schedule_call') {
+        await notifyAdmin(ALERT_TYPES.NEW_LEAD, { name: user.name, phone: user.phone, propertyType: 'Agent call request' });
+        await sendAndSave(phone, user, `👨‍💼 An agent will call you shortly on this number!`);
         return;
     }
 
-    // AI mode — pass to LLM
-    if (user.conversationState.data?.aiMode) {
-        try {
-            const aiResponse = await generateResponse(text);
-            await whatsappService.sendTextMessage(phone, `🤖 ${aiResponse}\n\nType *MENU* to go back.`);
-        } catch (err) {
-            await whatsappService.sendTextMessage(phone, `Sorry, AI is unavailable right now. Type *MENU* for options.`);
-        }
-        return;
-    }
+    // 2. Detect Intent via LLM
+    const history = user.getRecentHistory(6);
+    const { intent, confidence, entities } = await detectIntent(text, history, {
+        budget: user.budget,
+        locationPreference: user.locationPreference,
+        propertyType: user.propertyType,
+    });
 
-    // Default: send to AI
+    let aiContextProperties = [];
+    let responseMsg = '';
+
     try {
-        const response = await generateResponse(text);
-        await whatsappService.sendTextMessage(phone, `🤖 ${response}\n\nType *MENU* for options.`);
-    } catch (err) {
-        await whatsappService.sendTextMessage(phone,
-            `I didn't understand that. Type *MENU* to see options, or ask me anything! 🤖`
-        );
-    }
-};
+        switch (intent) {
+            case INTENTS.PROPERTY_DETAIL: {
+                const idx = (entities.propertyIndex || parseInt(text)) - 1;
+                // Query using last search context
+                const ctx = user.lastSearchContext?.location ? user.lastSearchContext : user;
+                const matches = await searchByQuery({
+                    budget: ctx.budget, location: ctx.locationPreference || ctx.location, propertyType: ctx.propertyType
+                });
 
-// ── HELPERS ──
+                if (idx >= 0 && idx < matches.length) {
+                    const prop = matches[idx];
+                    aiContextProperties = [prop];
+                    responseMsg = await generateResponse(text, history, user, aiContextProperties);
 
-// Hindi/Regional greetings
-const GREETINGS_MULTI = [
-    'hi', 'hello', 'hey', 'hii', 'hiii', 'namaste', 'namaskar',
-    'good morning', 'good afternoon', 'good evening',
-    'start', 'hlo', 'hlw', 'namaskaar', 'pranam',
-    'kaise ho', 'kya haal', 'jai shri ram', 'radhe radhe',
-];
+                    // Behavioral Tracking: Track that they viewed this property
+                    if (user.trackPropertyView) {
+                        user.trackPropertyView(prop._id);
+                        await user.save();
+                    }
 
-const resolvePropertyType = (text) => {
-    const lower = text.toLowerCase();
-    // English
-    if (lower.includes('apartment') || lower.includes('flat')) return 'apartment';
-    if (lower.includes('villa') || lower.includes('house') || lower.includes('bungalow')) return 'villa';
-    if (lower.includes('plot') || lower.includes('land')) return 'plot';
-    if (lower.includes('commercial') || lower.includes('shop') || lower.includes('office')) return 'commercial';
-    if (lower.includes('farm') || lower.includes('agriculture')) return 'farmhouse';
-    // Hindi
-    if (lower.includes('flat') || lower.includes('फ्लैट')) return 'apartment';
-    if (lower.includes('मकान') || lower.includes('ghar') || lower.includes('घर')) return 'villa';
-    if (lower.includes('जमीन') || lower.includes('zameen') || lower.includes('ज़मीन') || lower.includes('भूखंड')) return 'plot';
-    if (lower.includes('दुकान') || lower.includes('dukaan') || lower.includes('ऑफिस')) return 'commercial';
-    if (lower.includes('खेत') || lower.includes('फार्म')) return 'farmhouse';
-    return text;
-};
+                    // Also send media explicitly if available so they get photos
+                    if (prop.images && prop.images.length > 0) {
+                        const { getSignedUrl } = require('./s3Service');
+                        for (let i = 0; i < Math.min(prop.images.length, 3); i++) {
+                            try {
+                                const url = await getSignedUrl(prop.images[i]);
+                                await whatsappService.sendMediaMessage(phone, 'image', url, `${prop.title} - Photo ${i + 1}`);
+                            } catch (err) { }
+                        }
+                    }
+                } else {
+                    responseMsg = `Sorry, I couldn't find that property. Could you please specify which location or tell me what kind of property you're looking for?`;
+                }
+                break;
+            }
 
-/**
- * Smart Budget Parser — Real estate context aware
- * "50" → ₹50 Lakhs (in real estate, bare numbers assumed as Lakhs)
- * "50L" → ₹50 Lakhs
- * "1.5Cr" → ₹1.5 Crore
- * "5000000" → ₹50 Lakhs
- * Hindi: "pachaas lakh" → ₹50 Lakhs
- */
-const parseBudget = (text) => {
-    let input = text.toLowerCase()
-        .replace(/,/g, '')
-        .replace(/₹/g, '')
-        .replace(/rs\.?\s*/gi, '')
-        .replace(/rupees?\s*/gi, '')
-        .replace(/inr\s*/gi, '')
-        .trim();
+            case INTENTS.LOCATION_QUERY:
+            case INTENTS.PROPERTY_SEARCH:
+            case INTENTS.BUDGET_UPDATE:
+            case INTENTS.TYPE_UPDATE:
+            case INTENTS.UPDATE_PREFS: {
+                // Update user profile silently based on what was extracted
+                let updated = false;
+                if (entities.budget && entities.budget !== user.budget) {
+                    user.budget = entities.budget;
+                    if (!user.behavior) user.behavior = {};
+                    user.behavior.budgetShifts = (user.behavior.budgetShifts || 0) + 1;
+                    updated = true;
+                }
+                if (entities.location) { user.locationPreference = entities.location; updated = true; }
+                if (entities.propertyType) { user.propertyType = entities.propertyType; updated = true; }
 
-    // Hindi word numbers → digits
-    const hindiNumbers = {
-        'ek': 1, 'do': 2, 'teen': 3, 'chaar': 4, 'paanch': 5, 'panch': 5,
-        'chhah': 6, 'saat': 7, 'aath': 8, 'nau': 9, 'das': 10,
-        'bees': 20, 'tees': 30, 'chaalees': 40, 'pachaas': 50, 'pachis': 25,
-        'saath': 60, 'sattar': 70, 'assi': 80, 'nabbe': 90, 'sau': 100,
-        'एक': 1, 'दो': 2, 'तीन': 3, 'चार': 4, 'पांच': 5,
-        'दस': 10, 'बीस': 20, 'तीस': 30, 'चालीस': 40, 'पचास': 50,
-        'साठ': 60, 'सत्तर': 70, 'अस्सी': 80, 'नब्बे': 90, 'सौ': 100,
-    };
+                if (updated) await user.save();
 
-    // Replace Hindi number words with digits
-    for (const [word, num] of Object.entries(hindiNumbers)) {
-        if (input.includes(word)) {
-            input = input.replace(word, String(num));
+                // Search database with NEW preferences
+                aiContextProperties = await searchByQuery({
+                    budget: entities.budget || user.budget,
+                    location: entities.location || user.locationPreference,
+                    propertyType: entities.propertyType || user.propertyType,
+                    bedrooms: entities.bedrooms
+                });
+
+                // Update context
+                user.lastSearchContext = {
+                    budget: entities.budget || user.budget,
+                    location: entities.location || user.locationPreference,
+                    propertyType: entities.propertyType || user.propertyType,
+                    bedrooms: entities.bedrooms,
+                    updatedAt: new Date()
+                };
+                await user.save();
+
+                if (updated && user.budget > 0) {
+                    await notifyAdmin('CUSTOMER_PREFS_UPDATED', {
+                        name: user.name, phone: user.phone, budget: user.budget,
+                        location: user.locationPreference
+                    });
+
+                    // Update latest lead score dynamically
+                    const latestLead = await Lead.findOne({ customerId: user._id }).sort({ createdAt: -1 });
+                    if (latestLead) {
+                        const { calculateLeadScore } = require('./leadScoringEngine');
+                        latestLead.budget = user.budget;
+                        latestLead.location = user.locationPreference;
+                        latestLead.propertyType = user.propertyType;
+
+                        const newScore = calculateLeadScore(latestLead, user);
+                        latestLead.aiScore = newScore.aiScore;
+                        latestLead.urgency = newScore.urgency;
+                        latestLead.buyerPersona = newScore.buyerPersona;
+                        await latestLead.save();
+                    }
+                }
+
+                // Have AI generate friendly response wrapping the list
+                responseMsg = await generateResponse(text, history, user, aiContextProperties);
+                break;
+            }
+
+            case INTENTS.SCHEDULE_VISIT: {
+                await notifyAdmin(ALERT_TYPES.SITE_VISIT_BOOKED, {
+                    name: user.name, phone: user.phone,
+                    location: user.locationPreference, budget: user.budget
+                });
+                responseMsg = await generateResponse(text, history, user, []); // Let AI confirm
+                break;
+            }
+
+            case INTENTS.TALK_TO_AGENT: {
+                await notifyAdmin(ALERT_TYPES.NEW_LEAD, {
+                    name: user.name, phone: user.phone,
+                    propertyType: 'Agent Request'
+                });
+                responseMsg = `I've sent your request to our senior agents. They'll call you shortly on ${user.phone}! 📞`;
+                break;
+            }
+
+            case INTENTS.FINANCIAL_CALC: {
+                const { financialTools } = require('./financialEngine');
+                // Pass tools data manually to assist the LLM if exact entities were parsed
+                let financialContext = '';
+                if (entities.financialData && entities.financialData.principal) {
+                    const p = entities.financialData.principal;
+                    const r = entities.financialData.rate || 8.5;
+                    const y = entities.financialData.years || 20;
+                    const emi = financialTools.calculateEMI(p, r, y);
+                    financialContext = `\n[TOOL EXECUTED: calculateEMI(principal=${p}, rate=${r}, years=${y}). Result: EMI is ₹${emi}]`;
+                }
+
+                // Fetch the context property just in case they are referring to the current search
+                const ctx = user.lastSearchContext?.location ? user.lastSearchContext : user;
+                aiContextProperties = await searchByQuery({
+                    budget: ctx.budget, location: ctx.locationPreference || ctx.location, propertyType: ctx.propertyType
+                });
+
+                history[history.length - 1].content += financialContext; // sneaky inject
+                responseMsg = await generateResponse(text, history, user, aiContextProperties);
+                break;
+            }
+
+            case INTENTS.GREET:
+            case INTENTS.MENU:
+            case INTENTS.CANCEL:
+                return handleReturningCustomer(phone, user);
+
+            case INTENTS.FAQ:
+            case INTENTS.OTHER:
+            default:
+                // Just chat using history
+                responseMsg = await generateResponse(text, history, user, null);
+                break;
         }
-    }
 
-    // Hindi unit words
-    input = input
-        .replace(/करोड़|karod|crore/gi, 'cr')
-        .replace(/लाख|lakh|lac/gi, 'l')
-        .replace(/हज़ार|हजार|hazaar|hazar|thousand/gi, 'k');
+        // Send and save AI response
+        await sendAndSave(phone, user, responseMsg);
+
+    } catch (e) {
+        logger.error('Smart Message Error:', e.message);
+        await sendAndSave(phone, user, `Sorry, my brain just glitched! 😅 Let me connect you with our team instead.`);
+    }
+};
+
+// ── UTILS ──
+
+const sendAndSave = async (phone, user, msg) => {
+    user.addToHistory('assistant', msg);
+    await user.save();
+    return whatsappService.sendTextMessage(phone, msg);
+};
+
+const sendInteractiveAndSave = async (phone, user, msg, buttons) => {
+    user.addToHistory('assistant', msg);
+    await user.save();
+    return whatsappService.sendInteractiveButtons(phone, msg, buttons);
+};
+
+// Legacy manual parser exactly as before
+const parseBudgetSimple = (text) => {
+    let input = text.toLowerCase().replace(/,/g, '').replace(/₹/g, '').replace(/rs\.?\s*/g, '').trim();
+    const hindiWords = { 'ek': 1, 'do': 2, 'teen': 3, 'chaar': 4, 'paanch': 5, 'das': 10, 'bees': 20, 'tees': 30, 'chaalees': 40, 'pachaas': 50, 'saath': 60, 'sattar': 70, 'assi': 80, 'nabbe': 90, 'sau': 100 };
+    for (const [w, n] of Object.entries(hindiWords)) if (input.includes(w)) input = input.replace(w, String(n));
+    input = input.replace(/करोड़|karod|crore/gi, 'cr').replace(/लाख|lakh|lac/gi, 'l').replace(/हज़ार|hazaar|k/gi, 'k');
 
     let amount = 0;
-
-    // Match patterns: "1.5cr", "50l", "500k"
     const crMatch = input.match(/([\d.]+)\s*cr/);
     const lMatch = input.match(/([\d.]+)\s*l/);
-    const kMatch = input.match(/([\d.]+)\s*k/);
     const numMatch = input.match(/([\d.]+)/);
 
-    if (crMatch) {
-        amount = parseFloat(crMatch[1]) * 10000000;
-    } else if (lMatch) {
-        amount = parseFloat(lMatch[1]) * 100000;
-    } else if (kMatch) {
-        amount = parseFloat(kMatch[1]) * 1000;
-    } else if (numMatch) {
+    if (crMatch) amount = parseFloat(crMatch[1]) * 10000000;
+    else if (lMatch) amount = parseFloat(lMatch[1]) * 100000;
+    else if (numMatch) {
         amount = parseFloat(numMatch[1]);
-
-        // Smart inference for real estate context:
-        if (amount >= 10000000) {
-            // Already in absolute (1Cr+), keep as-is
-        } else if (amount >= 100000) {
-            // Looks like absolute value (e.g., 5000000 = 50L), keep as-is
-        } else if (amount >= 100) {
-            // Could be "500" meaning 500? In real estate → assume thousands
-            // But 5000 could mean 5000 or 50L — keep as-is if > 1000
-            if (amount >= 1000) {
-                // Assume thousands or keep as-is (user might mean 5000 rupees)
-            }
-        } else {
-            // Small number (1-99) → MUST be in Lakhs for real estate
-            // "50" → 50 Lakhs, "1" → 1 Lakh, "2.5" → 2.5 Lakhs
-            amount = amount * 100000;
-        }
+        if (amount < 100) amount *= 100000; // Assume lakhs
     }
-
     return amount;
 };
 
-/**
- * Detect if the message is in Hindi (Devanagari) or English
- */
-const detectLanguage = (text) => {
-    const devanagariRegex = /[\u0900-\u097F]/;
-    if (devanagariRegex.test(text)) return 'hi';
-    // Check for Hinglish common words
-    const hinglishWords = ['kya', 'hai', 'mujhe', 'chahiye', 'ghar', 'zameen',
-        'kitna', 'kahan', 'batao', 'dikhao', 'bhai', 'ji', 'acha', 'theek',
-        'haan', 'nahi', 'nhi', 'kaise', 'kab', 'abhi', 'baad'];
-    const words = text.toLowerCase().split(/\s+/);
-    const hinglishCount = words.filter(w => hinglishWords.includes(w)).length;
-    if (hinglishCount >= 2 || hinglishCount / words.length > 0.3) return 'hi';
-    return 'en';
+const resolvePropertyTypeLegacy = (text) => {
+    const lower = text.toLowerCase();
+    if (lower.includes('apartment') || lower.includes('flat')) return 'apartment';
+    if (lower.includes('villa') || lower.includes('house') || lower.includes('makan')) return 'villa';
+    if (lower.includes('plot') || lower.includes('land') || lower.includes('zameen')) return 'plot';
+    if (lower.includes('commercial') || lower.includes('shop') || lower.includes('dukaan')) return 'commercial';
+    if (lower.includes('farm')) return 'farmhouse';
+    return text; // fallback
 };
 
-module.exports = { handleNewCustomer, handleReturningCustomer, handleCustomerMessage };
-
+module.exports = { handleNewCustomer, handleReturningCustomer, handleCustomerMessage, handleCustomerImage };

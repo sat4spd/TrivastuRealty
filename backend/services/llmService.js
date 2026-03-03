@@ -1,45 +1,343 @@
+/**
+ * llmService.js — Industry-Level AI Engine for Trivastu Realty
+ *
+ * Features:
+ *  - Intent Detection (classifies customer messages)
+ *  - Entity Extraction (location, budget, type, bedrooms from free text)
+ *  - Persistent Conversation History (last N turns sent to GPT)
+ *  - Context-aware Property Recommendations (live DB data injected)
+ *  - Admin Natural Language Command Parsing
+ *  - Multilingual: English, Hindi, Hinglish
+ */
+
 const OpenAI = require('openai');
 const Property = require('../models/Property');
 const logger = require('../utils/logger');
 const { formatCurrency } = require('../utils/helpers');
+const { financialTools } = require('./financialEngine');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const SYSTEM_PROMPT = `You are the AI assistant for Trivastu Realty, a trusted real estate company based in Jharkhand, India.
-We primarily serve customers looking for properties in Jharkhand — including Ranchi, Jamshedpur, Dhanbad, Bokaro, Hazaribagh, Deoghar, Dumka, Giridih, Ramgarh, Chaibasa, and surrounding areas.
+// ── SYSTEM PROMPT (Trivastu Realty AI) ──
+const SYSTEM_PROMPT = `You are ARIA (Advanced Realty Intelligence Agent), the AI assistant for Trivastu Realty — a trusted real estate company based in Jharkhand, India.
 
-RULES:
-1. NEVER generate or modify property prices on your own. Only use prices from the provided data.
-2. NEVER suggest modifications to property listings.
-3. Always be professional, friendly, and helpful.
-4. If you don't know something, say you'll connect them with an agent.
-5. Recommend properties ONLY from the data provided to you.
-6. Format responses for WhatsApp (use emojis, bold with *, keep it concise).
-7. Respond in the same language the customer uses — support English, Hindi, Hinglish. Understand Bhojpuri and Santali greetings.
-8. When customers mention a location without specifying a state, assume they mean Jharkhand.
-9. Keep responses under 300 words.
-10. For land/plot queries, use terms like 'decimal', 'acre', 'katha', 'bigha' which are common in Jharkhand.`;
+We specialize in properties across Jharkhand including Ranchi, Tupudana, Nagri, Lodhma, Jamshedpur, Dhanbad, Bokaro, Hazaribagh, Deoghar, and surrounding areas.
 
-const answerFAQ = async (question, context = '') => {
+PERSONALITY:
+- Warm, professional, and consultative — like a knowledgeable friend in real estate
+- Proactive: if customer mentions a new location, acknowledge and search for it
+- Never dismissive — always try to help even if no exact match exists
+
+HARD RULES:
+1. NEVER make up or estimate property prices — only use prices from provided data
+2. NEVER suggest modifying property listings
+3. If no properties match, suggest alternatives and offer to connect with an agent
+4. Recommend properties ONLY from data given to you in context
+5. Format responses for WhatsApp: use emojis, *bold* for emphasis, keep under 300 words
+6. Respond in the SAME language the customer uses (English / Hindi / Hinglish)
+7. When customer mentions any location in Jharkhand without specifying state → assume Jharkhand
+8. Use local real estate terms: decimal, katha, bigha, acre, gaj for land measurements
+9. When customer changes preferences (new location, new budget) → acknowledge the change explicitly
+10. ALWAYS end with a clear next step or question to keep conversation moving
+
+CONTEXT UNDERSTANDING:
+- If customer previously mentioned Lodhma and now asks about Tupudana → they want to explore the new area
+- "Show me something near there" → reference last mentioned location
+- "kuch aur dikhao" (show me more) → show more properties from current search
+- Numbers like "1", "2", "3" → likely referring to a numbered property in the list`;
+
+const INTENTS = {
+    GREET: 'greet',
+    PROPERTY_SEARCH: 'property_search',
+    LOCATION_QUERY: 'location_query',
+    BUDGET_UPDATE: 'budget_update',
+    TYPE_UPDATE: 'type_update',
+    SCHEDULE_VISIT: 'schedule_visit',
+    TALK_TO_AGENT: 'talk_to_agent',
+    VIEW_PROPERTIES: 'view_properties',
+    PROPERTY_DETAIL: 'property_detail',
+    UPDATE_PREFS: 'update_prefs',
+    FINANCIAL_CALC: 'financial_calc',
+    FAQ: 'faq',
+    CANCEL: 'cancel',
+    OTHER: 'other',
+};
+
+/**
+ * Detect the intent of a user message using LLM
+ *
+ * @param {string} text - User's message
+ * @param {Array} history - Last few conversation turns [{role, content}]
+ * @param {object} userProfile - Current user preferences
+ * @returns {Promise<{intent: string, confidence: number, entities: object}>}
+ */
+const detectIntent = async (text, history = [], userProfile = {}) => {
     try {
+        const contextStr = history.length > 0
+            ? `Recent conversation:\n${history.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n')}\n\n`
+            : '';
+
+        const profileStr = userProfile.locationPreference
+            ? `Current preferences — Location: ${userProfile.locationPreference}, Budget: ${formatCurrency(userProfile.budget || 0)}, Type: ${userProfile.propertyType || 'any'}\n\n`
+            : '';
+
+        const prompt = `${profileStr}${contextStr}User message: "${text}"
+
+Classify this real estate customer message into ONE of these intents:
+- greet: Hello, hi, namaste, good morning, start
+- property_search: Looking for property, show properties, search, find flat/plot/villa
+- location_query: Asking about a specific location, "show me in Tupudana", "properties near Ranchi"
+- budget_update: Changing their budget, "my budget is now 30L", "under 50 lakhs"
+- type_update: Changing property type, "I want a plot now", "looking for villa"
+- schedule_visit: Wants to see a property in person, visit, site visit
+- talk_to_agent: Wants to speak to a human agent
+- view_properties: Wants to see the property list again
+- property_detail: Asking for details on a specific property (often a number or "tell me more")
+- update_prefs: Changing multiple preferences at once
+- financial_calc: Asking about EMI, stamp duty, ROI, rental yield, or down payment. e.g "What is EMI for 50L?"
+- faq: General question about real estate, area, process, documentation, loan
+- cancel: Wants to stop current flow, "cancel", "go back", "menu"
+- other: Doesn't fit any category above
+
+Return ONLY a JSON object (no markdown):
+{
+  "intent": "<intent_name>",
+  "confidence": <0.0-1.0>,
+  "entities": {
+    "location": "<extracted location or null>",
+    "budget": <number in INR or null>,
+    "propertyType": "<apartment|villa|plot|commercial|farmhouse or null>",
+    "bedrooms": <number or null>,
+    "propertyIndex": <1-based index if user said a number, or null>,
+    "financialData": { "principal": <number|null>, "rate": <number|null>, "years": <number|null> }
+  }
+}`;
+
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
-            messages: [
-                { role: 'system', content: SYSTEM_PROMPT + (context ? `\n\nProject Information:\n${context}` : '') },
-                { role: 'user', content: question },
-            ],
-            max_tokens: 500,
-            temperature: 0.7,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 200,
+            temperature: 0.1,
+            response_format: { type: 'json_object' },
         });
-        const answer = response.choices[0].message.content;
-        logger.info('FAQ answered by AI');
-        return answer;
+
+        const result = JSON.parse(response.choices[0].message.content);
+        logger.info(`🧠 Intent: ${result.intent} (${result.confidence}) | Text: "${text.substring(0, 60)}"`);
+        return result;
     } catch (error) {
-        logger.error('LLM FAQ error:', error.message);
-        return "I'm having trouble processing your query right now. Let me connect you with our team. Please wait! 🙏";
+        logger.error('Intent detection error:', error.message);
+        // Fallback: simple keyword detection
+        return fallbackIntentDetect(text);
     }
 };
 
+/**
+ * Fallback intent detection using keywords (no API call)
+ */
+const fallbackIntentDetect = (text) => {
+    const lower = text.toLowerCase().trim();
+    const entities = { location: null, budget: null, propertyType: null, bedrooms: null, propertyIndex: null };
+
+    // Greet
+    if (/^(hi|hello|hey|hii|namaste|start|menu|namaskar|hlo)/.test(lower)) {
+        return { intent: INTENTS.GREET, confidence: 0.9, entities };
+    }
+    // Numbers (property detail)
+    const numMatch = lower.match(/^(\d+)$/);
+    if (numMatch) {
+        entities.propertyIndex = parseInt(numMatch[1]);
+        return { intent: INTENTS.PROPERTY_DETAIL, confidence: 0.85, entities };
+    }
+    // Schedule visit
+    if (lower.includes('visit') || lower.includes('site') || lower.includes('dikhao')) {
+        return { intent: INTENTS.SCHEDULE_VISIT, confidence: 0.8, entities };
+    }
+    // Talk to agent
+    if (lower.includes('agent') || lower.includes('call') || lower.includes('phone')) {
+        return { intent: INTENTS.TALK_TO_AGENT, confidence: 0.75, entities };
+    }
+    // Property search
+    if (lower.includes('property') || lower.includes('flat') || lower.includes('plot') ||
+        lower.includes('ghar') || lower.includes('makan') || lower.includes('zameen')) {
+        return { intent: INTENTS.PROPERTY_SEARCH, confidence: 0.7, entities };
+    }
+    // Cancel
+    if (lower === 'cancel' || lower === 'back' || lower === 'stop') {
+        return { intent: INTENTS.CANCEL, confidence: 0.95, entities };
+    }
+
+    return { intent: INTENTS.OTHER, confidence: 0.4, entities };
+};
+
+/**
+ * Extract real estate entities from free-form text
+ *
+ * @param {string} text
+ * @returns {Promise<{location, budget, propertyType, bedrooms}>}
+ */
+const extractEntities = async (text) => {
+    try {
+        const prompt = `Extract real estate search entities from this message (Indian real estate context, Jharkhand):
+"${text}"
+
+Rules:
+- budget: convert to INR number (50L = 5000000, 1Cr = 10000000, 1.5Cr = 15000000)  
+- propertyType: one of apartment, villa, plot, commercial, farmhouse (null if not mentioned)
+- location: the place name (could be Tupudana, Nagri, Ranchi, Jharkhand etc.)
+- bedrooms: number of BHK (null if not mentioned)
+
+Return ONLY JSON (no markdown):
+{"location": string|null, "budget": number|null, "propertyType": string|null, "bedrooms": number|null}`;
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 100,
+            temperature: 0.0,
+            response_format: { type: 'json_object' },
+        });
+
+        const result = JSON.parse(response.choices[0].message.content);
+        return result;
+    } catch (error) {
+        logger.error('Entity extraction error:', error.message);
+        return { location: null, budget: null, propertyType: null, bedrooms: null };
+    }
+};
+
+/**
+ * Generate a contextual AI response for the customer
+ *
+ * @param {string} userMessage - Current message
+ * @param {Array} conversationHistory - [{role: 'user'|'assistant', content: string}]
+ * @param {object} userProfile - User preferences (budget, location, etc.)
+ * @param {Array} matchedProperties - Properties to inject into context
+ * @returns {Promise<string>}
+ */
+const generateResponse = async (
+    userMessage,
+    conversationHistory = [],
+    userProfile = {},
+    matchedProperties = []
+) => {
+    try {
+        // Build context block with user's profile + available properties
+        let contextBlock = '';
+
+        if (userProfile && (userProfile.name || userProfile.budget)) {
+            contextBlock += `\nCUSTOMER PROFILE:\n`;
+            if (userProfile.name) contextBlock += `- Name: ${userProfile.name}\n`;
+            if (userProfile.budget) contextBlock += `- Budget: ${formatCurrency(userProfile.budget)}\n`;
+            if (userProfile.locationPreference) contextBlock += `- Preferred Location: ${userProfile.locationPreference}\n`;
+            if (userProfile.propertyType) contextBlock += `- Property Type: ${userProfile.propertyType}\n`;
+            // Add behavioral snippet for LLM to provide better recs
+            if (userProfile.behavior?.savedProperties?.length > 0) contextBlock += `- Saved Properties: ${userProfile.behavior.savedProperties.length}\n`;
+            if (userProfile.behavior?.budgetShifts > 2) contextBlock += `- Note: Customer has shifted budget multiple times. Suggest properties slightly above and below strictly matching budget.\n`;
+        }
+
+        if (matchedProperties && matchedProperties.length > 0) {
+            contextBlock += `\nAVAILABLE PROPERTIES MATCHING QUERY:\n`;
+            matchedProperties.slice(0, 5).forEach((p, i) => {
+                contextBlock += `${i + 1}. ${p.title} | ${formatCurrency(p.price)} | ${p.location} | ${p.type}${p.bedrooms ? ` | ${p.bedrooms} BHK` : ''}${p.area ? ` | ${p.area} ${p.unit || 'sqft'}` : ''}\n`;
+                if (p.description) contextBlock += `   ${p.description.substring(0, 80)}...\n`;
+            });
+            // Inject Financial Tools data into context if looking at properties
+            const topProp = matchedProperties[0];
+            const emiEst = financialTools.calculateEMI(topProp.price * 0.8, 8.5, 20); // 80% LTV, 8.5% 20yrs
+            const acqCost = financialTools.calculateAcquisitionCost(topProp.price);
+            contextBlock += `\nFINANCIAL ESTIMATES FOR LISTING #1:\n`;
+            contextBlock += `- Estimated EMI (8.5%, 20 yrs, 80% loan): ${formatCurrency(emiEst)}/mo\n`;
+            contextBlock += `- Total cost with Stamp Duty (6%) & Reg (1%): ${formatCurrency(acqCost.totalCost)}\n`;
+        } else if (matchedProperties !== null) {
+            // Explicitly told no properties match — tell AI
+            contextBlock += `\nNO PROPERTIES currently match the search criteria. Suggest alternatives or offer agent connection.\n`;
+        }
+
+        const systemContent = SYSTEM_PROMPT + (contextBlock ? `\n\n${contextBlock}` : '');
+
+        // Use last 10 turns of history for context window
+        const recentHistory = conversationHistory.slice(-10);
+
+        const messages = [
+            { role: 'system', content: systemContent },
+            ...recentHistory,
+            { role: 'user', content: userMessage },
+        ];
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages,
+            max_tokens: 500,
+            temperature: 0.7,
+        });
+
+        const answer = response.choices[0].message.content;
+        logger.info('✅ AI response generated');
+        return answer;
+    } catch (error) {
+        logger.error('LLM response error:', error.message);
+        return "Thanks for your message! Let me connect you with our team for the best assistance. 🙏\n\nType *MENU* for options.";
+    }
+};
+
+/**
+ * Parse preference updates from customer message
+ * Enhanced: handles partial updates and compound changes
+ *
+ * @param {string} userMessage
+ * @param {object} currentPreferences
+ * @returns {Promise<{isUpdate, budget, locationPreference, propertyType, timeline}>}
+ */
+const parsePreferencesUpdate = async (userMessage, currentPreferences) => {
+    try {
+        const prompt = `You are a real estate preference parser for Trivastu Realty (Jharkhand, India).
+Current customer preferences:
+${JSON.stringify(currentPreferences, null, 2)}
+
+Customer message: "${userMessage}"
+
+Determine if this message is UPDATING their search preferences (budget, location, type, timeline).
+Examples of updates:
+- "now show me Tupudana" → location update
+- "my budget is 40 lakhs" → budget update  
+- "I want a villa now" → type update
+- "need it within 3 months" → timeline update
+- "change to Nagri, budget 60L" → multiple updates
+- "hello", "what is EMI?", "show properties" → NOT an update
+
+For budget: convert to INR (50L = 5000000, 1.5Cr = 15000000).
+For propertyType: use one of: apartment, villa, plot, commercial, farmhouse.
+For timeline: use one of: immediate, 3_months, 6_months, 1_year.
+
+Return ONLY valid JSON (no markdown):
+{
+  "isUpdate": boolean,
+  "budget": number | null,
+  "locationPreference": string | null,
+  "propertyType": string | null,
+  "timeline": string | null
+}`;
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 150,
+            temperature: 0.0,
+            response_format: { type: 'json_object' },
+        });
+
+        const parsed = JSON.parse(response.choices[0].message.content);
+        return parsed;
+    } catch (error) {
+        logger.error('LLM preference parsing error:', error.message);
+        return { isUpdate: false };
+    }
+};
+
+/**
+ * Recommend properties with LLM-generated descriptions
+ * (legacy function, still supported)
+ */
 const recommendProperties = async (customerProfile) => {
     try {
         const budgetMin = customerProfile.budget * 0.8;
@@ -67,13 +365,12 @@ const recommendProperties = async (customerProfile) => {
             }
 
             const listings = fallback.map((p, i) =>
-                `${i + 1}. *${p.title}*\n   📍 ${p.location}\n   💰 ${formatCurrency(p.price)}\n   🏠 ${p.type} | ${p.bedrooms} BHK\n   📐 ${p.area}`
+                `${i + 1}. *${p.title}*\n   📍 ${p.location}\n   💰 ${formatCurrency(p.price)}\n   🏠 ${p.type}${p.bedrooms ? ` | ${p.bedrooms} BHK` : ''}\n   📐 ${p.area}`
             ).join('\n\n');
 
-            return `We don't have exact matches for your criteria, but here are our latest listings:\n\n${listings}\n\nWould you like details on any of these? Reply with the number! 😊`;
+            return `We don't have exact matches, but here are our latest listings:\n\n${listings}\n\nWould you like details on any? Reply with the number! 😊`;
         }
 
-        // Score and rank
         const scored = properties.map(p => {
             let score = 0;
             const priceDiff = Math.abs(p.price - customerProfile.budget) / customerProfile.budget;
@@ -86,15 +383,15 @@ const recommendProperties = async (customerProfile) => {
         scored.sort((a, b) => b.score - a.score);
         const top3 = scored.slice(0, 3);
 
-        const prompt = `Based on this customer profile:
+        const prompt = `Customer profile:
 - Budget: ${formatCurrency(customerProfile.budget)}
-- Location: ${customerProfile.location || 'Any'}
+- Location: ${customerProfile.location || 'Any in Jharkhand'}
 - Type: ${customerProfile.propertyType || 'Any'}
 
-Here are the top matching properties:
-${top3.map((p, i) => `${i + 1}. ${p.title} - ${formatCurrency(p.price)} at ${p.location}, ${p.type}, ${p.bedrooms} BHK, ${p.area}`).join('\n')}
+Top matching properties:
+${top3.map((p, i) => `${i + 1}. ${p.title} — ${formatCurrency(p.price)} at ${p.location}, ${p.type}${p.bedrooms ? `, ${p.bedrooms} BHK` : ''}${p.area ? `, ${p.area} ${p.unit || 'sqft'}` : ''}`).join('\n')}
 
-Write a friendly WhatsApp recommendation message for each property, highlighting why each is a good match. Keep it concise with emojis.`;
+Write a friendly WhatsApp recommendation message for each property. Keep it concise with emojis. End with "Reply with a number for full details 📸"`;
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
@@ -110,69 +407,88 @@ Write a friendly WhatsApp recommendation message for each property, highlighting
         return response.choices[0].message.content;
     } catch (error) {
         logger.error('LLM recommendation error:', error.message);
-        return "I'm working on finding the best properties for you. Our team will share recommendations shortly! 🏠";
+        return "I'm finding the best properties for you. Our team will share recommendations shortly! 🏠";
     }
 };
 
-const generateResponse = async (userMessage, conversationHistory = []) => {
+/**
+ * Answer FAQ with property context
+ */
+const answerFAQ = async (question, context = '') => {
     try {
-        const messages = [
-            { role: 'system', content: SYSTEM_PROMPT },
-            ...conversationHistory.slice(-5),
-            { role: 'user', content: userMessage },
-        ];
-
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
-            messages,
-            max_tokens: 400,
+            messages: [
+                { role: 'system', content: SYSTEM_PROMPT + (context ? `\n\nContext:\n${context}` : '') },
+                { role: 'user', content: question },
+            ],
+            max_tokens: 500,
             temperature: 0.7,
         });
-
         return response.choices[0].message.content;
     } catch (error) {
-        logger.error('LLM response error:', error.message);
-        return "Thanks for your message! Let me connect you with our team for the best assistance. 🙏";
+        logger.error('LLM FAQ error:', error.message);
+        return "I'm having trouble processing your query. Let me connect you with our team. 🙏";
     }
 };
 
-const parsePreferencesUpdate = async (userMessage, currentPreferences) => {
+/**
+ * Parse admin natural language command
+ * e.g., "approve the pending agents", "show me leads from Ranchi"
+ */
+const parseAdminCommand = async (text) => {
     try {
-        const prompt = `You are a real estate AI assistant for Trivastu Realty.
-The customer is currently looking for properties with these preferences:
-${JSON.stringify(currentPreferences, null, 2)}
+        const prompt = `You are an admin command parser for Trivastu Realty.
+The admin sent this message: "${text}"
 
-The customer just sent this message:
-"${userMessage}"
+Map it to one of these admin actions:
+- stats: show dashboard statistics
+- pending: show pending approvals
+- leads: show recent leads
+- agents: list all agents
+- properties: list properties
+- add_agent: start adding a new agent
+- add_property: start adding a new property
+- approve_agent: approve an agent (extract phone if present)
+- reject_agent: reject an agent (extract phone if present)
+- approve_property: approve property (extract ID if present)
+- update_lead: update lead status (extract lead ID and status)
+- update_property: update property field (extract ID, field, value)
+- search_customer: search a customer (extract phone)
+- menu: show admin menu
+- unknown: doesn't match any admin action
 
-Analyze if this message contains any changes to their real estate search preferences (budget, location, property type, or timeline).
-If it's just a general question or greeting, return {"isUpdate": false}.
-If they are updating their criteria, extract the new values. 
-For budget, convert amounts to numerical INR (e.g., "50 lakhs" -> 5000000, "1.5 cr" -> 15000000). For type, use one of: apartment, villa, plot, commercial, farmhouse.
-
-Return ONLY a valid, minified JSON object with this structure. Do NOT include any markdown blocks (like \`\`\`json) or other text.
+Return ONLY JSON:
 {
-  "isUpdate": boolean,
-  "budget": number | null,
-  "locationPreference": string | null,
-  "propertyType": string | null,
-  "timeline": string | null
+  "action": "string",
+  "phone": "string|null",
+  "id": "string|null",
+  "field": "string|null",
+  "value": "string|null"
 }`;
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [{ role: 'user', content: prompt }],
-            max_tokens: 200,
-            temperature: 0.1,
+            max_tokens: 100,
+            temperature: 0.0,
+            response_format: { type: 'json_object' },
         });
 
-        const jsonStr = response.choices[0].message.content.replace(/^```json/i, '').replace(/```$/i, '').trim();
-        const parsed = JSON.parse(jsonStr);
-        return parsed;
+        return JSON.parse(response.choices[0].message.content);
     } catch (error) {
-        logger.error('LLM preference parsing error:', error.message);
-        return { isUpdate: false };
+        logger.error('Admin command parse error:', error.message);
+        return { action: 'unknown' };
     }
 };
 
-module.exports = { answerFAQ, recommendProperties, generateResponse, parsePreferencesUpdate };
+module.exports = {
+    detectIntent,
+    extractEntities,
+    generateResponse,
+    parsePreferencesUpdate,
+    recommendProperties,
+    answerFAQ,
+    parseAdminCommand,
+    INTENTS,
+};
