@@ -1,0 +1,115 @@
+.logs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.logs-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.logs-container {
+    background: #0f172a;
+    border-radius: 8px;
+    padding: 16px;
+    height: 600px;
+    overflow-y: auto;
+    font-family: 'Courier New', Courier, monospace;
+    color: #e2e8f0;
+    box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.terminal-window {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.no-logs {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    color: #64748b;
+    font-style: italic;
+}
+
+.log-entry {
+    padding: 2px 0;
+    word-break: break-all;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.log-time {
+    color: #64748b;
+    margin-right: 12px;
+}
+
+.log-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-right: 12px;
+    min-width: 50px;
+    text-align: center;
+}
+
+.badge-log-info {
+    background: #0ea5e9;
+    color: white;
+}
+
+.badge-log-warn {
+    background: #f59e0b;
+    color: white;
+}
+
+.badge-log-error {
+    background: #ef4444;
+    color: white;
+}
+
+.badge-log-debug {
+    background: #8b5cf6;
+    color: white;
+}
+
+.log-error .log-message {
+    color: #fca5a5;
+}
+
+.log-warn .log-message {
+    color: #fde047;
+}
+
+.log-debug .log-message {
+    color: #c4b5fd;
+}
+
+.log-info .log-message {
+    color: #e2e8f0;
+}
+
+/* Scrollbar for terminal */
+.logs-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.logs-container::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+
+.logs-container::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}
+
+.logs-container::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
