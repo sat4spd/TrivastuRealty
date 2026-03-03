@@ -2,7 +2,8 @@
 
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+// Use the same API URL for Socket.IO — works in both dev and production
+const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
 
 let socket = null;
 
