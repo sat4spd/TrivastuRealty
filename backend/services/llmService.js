@@ -89,8 +89,8 @@ Classify this real estate customer message into ONE of these intents:
 - location_query: Asking about a specific location, "show me in Tupudana", "properties near Ranchi"
 - budget_update: Changing their budget, "my budget is now 30L", "under 50 lakhs"
 - type_update: Changing property type, "I want a plot now", "looking for villa"
-- schedule_visit: Wants to see a property in person, visit, site visit
-- talk_to_agent: Wants to speak to a human agent
+- schedule_visit: ONLY when user explicitly confirms they want to schedule, books a date/time, or asks to visit a specific property today/tomorrow.
+- talk_to_agent: Wants to speak to a human agent, request a call back
 - view_properties: Wants to see the property list again
 - property_detail: Asking for details on a specific property (often a number or "tell me more")
 - update_prefs: Changing multiple preferences at once
@@ -109,6 +109,8 @@ Return ONLY a JSON object (no markdown):
     "propertyType": "<apartment|villa|plot|commercial|farmhouse or null>",
     "bedrooms": <number or null>,
     "propertyIndex": <1-based index if user said a number, or null>,
+    "visitDate": "<extracted date/day e.g. Sunday, tomorrow, or null>",
+    "visitTime": "<extracted time e.g. 10 AM, evening, or null>",
     "financialData": { "principal": <number|null>, "rate": <number|null>, "years": <number|null> }
   }
 }`;

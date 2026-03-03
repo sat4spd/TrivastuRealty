@@ -126,6 +126,13 @@ const handleCustomerMessage = async (phone, message, user) => {
     const state = user.conversationState;
     const text = message.trim();
 
+    // 4-Hour Session Timeout: clear old conversation history so AI doesn't get confused
+    const FOUR_HOURS = 4 * 60 * 60 * 1000;
+    if (user.lastInteraction && (new Date() - new Date(user.lastInteraction)) > FOUR_HOURS) {
+        user.conversationHistory = [];
+        logger.info(`🧹 Resetting 4-hour chat session history for ${phone}`);
+    }
+
     // Log message
     user.addToHistory('user', text);
 
@@ -490,20 +497,41 @@ const handleSmartMessage = async (phone, text, user) => {
             }
 
             case INTENTS.SCHEDULE_VISIT: {
-                await notifyAdmin(ALERT_TYPES.SITE_VISIT_BOOKED, {
-                    name: user.name, phone: user.phone,
-                    location: user.locationPreference, budget: user.budget
-                });
-                responseMsg = await generateResponse(text, history, user, []); // Let AI confirm
+                if (entities.visitDate || entities.visitTime) {
+                    // They provided an actual time/date - Confirmed!
+                    await notifyAdmin(ALERT_TYPES.SITE_VISIT_BOOKED, {
+                        name: user.name, phone: user.phone,
+                        location: user.locationPreference || 'Any',
+                        budget: user.budget || 0,
+                    });
+                    responseMsg = await generateResponse(text, history, user, []);
+                } else {
+                    // They just mentioned visiting - prompt for time/date
+                    responseMsg = await generateResponse(text + " (AI Note: Ask the user what day and time they would like to visit.)", history, user, []);
+                }
                 break;
             }
 
             case INTENTS.TALK_TO_AGENT: {
+                // Attempt to route to an agent
+                const { assignAgentToLead } = require('./assignmentEngine');
+                const latestLead = await Lead.findOne({ customerId: user._id }).sort({ createdAt: -1 });
+                let agentName = "our senior agents";
+
+                if (latestLead) {
+                    const agentId = await assignAgentToLead(latestLead);
+                    if (agentId) {
+                        const Agent = require('../models/Agent');
+                        const assignedWorker = await Agent.findOne({ whatsappNumber: agentId });
+                        if (assignedWorker) agentName = assignedWorker.name;
+                    }
+                }
+
                 await notifyAdmin(ALERT_TYPES.NEW_LEAD, {
                     name: user.name, phone: user.phone,
-                    propertyType: 'Agent Request'
+                    propertyType: 'Callback Request'
                 });
-                responseMsg = `I've sent your request to our senior agents. They'll call you shortly on ${user.phone}! 📞`;
+                responseMsg = `I've sent a callback request! 📞 ${agentName} will call you shortly on your number (${user.phone}).`;
                 break;
             }
 
@@ -543,8 +571,17 @@ const handleSmartMessage = async (phone, text, user) => {
                 break;
         }
 
-        // Send and save AI response
-        await sendAndSave(phone, user, responseMsg);
+        // Send and save AI response with Premium Action Buttons
+        // If the intent suggests they are looking at properties, give them next steps
+        if ([INTENTS.PROPERTY_SEARCH, INTENTS.PROPERTY_DETAIL, INTENTS.BUDGET_UPDATE, INTENTS.LOCATION_QUERY].includes(intent)) {
+            const premiumButtons = [
+                { id: 'schedule_call', title: '📞 Request Call' },
+                { id: 'schedule_visit', title: '📅 Schedule Visit' }
+            ];
+            await sendInteractiveAndSave(phone, user, responseMsg, premiumButtons);
+        } else {
+            await sendAndSave(phone, user, responseMsg);
+        }
 
     } catch (e) {
         logger.error('Smart Message Error:', e.message);
