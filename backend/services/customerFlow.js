@@ -503,6 +503,8 @@ const handleSmartMessage = async (phone, text, user) => {
                         name: user.name, phone: user.phone,
                         location: user.locationPreference || 'Any',
                         budget: user.budget || 0,
+                        visitDate: entities.visitDate,
+                        visitTime: entities.visitTime
                     });
                     responseMsg = await generateResponse(text, history, user, []);
                 } else {

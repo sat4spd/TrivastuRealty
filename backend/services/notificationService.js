@@ -57,8 +57,14 @@ const notifyAdmin = async (type, data) => {
             break;
 
         case ALERT_TYPES.SITE_VISIT:
-            message = `📅 *Site Visit Booked*\n\n👤 Customer: ${data.customerName}\n🏠 Property: ${data.propertyTitle}\n📅 Date: ${data.visitDate}\n👨‍💼 Agent: ${data.agentName}`;
-            emailSubject = `Site Visit: ${data.customerName}`;
+        case ALERT_TYPES.SITE_VISIT_BOOKED:
+            message = `📅 *Site Visit Booked/Requested*\n\n👤 Customer: ${data.name}\n📞 Phone: ${data.phone}\n📍 Location: ${data.location || 'Any'}\n📅 Date & Time: ${data.visitDate || 'TBD'} at ${data.visitTime || 'TBD'}\n💰 Budget: ${formatCurrency(data.budget || 0)}`;
+            emailSubject = `Site Visit: ${data.name}`;
+            break;
+
+        case 'CUSTOMER_PREFS_UPDATED':
+            message = `🔄 *Customer Updated Preferences*\n\n👤 Customer: ${data.name}\n📞 Phone: ${data.phone}\n📍 New Location: ${data.location}\n💰 New Budget: ${formatCurrency(data.budget)}`;
+            emailSubject = `Update: ${data.name}`;
             break;
 
         case ALERT_TYPES.PAYMENT_CONFIRMATION:

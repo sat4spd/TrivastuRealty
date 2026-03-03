@@ -77,17 +77,18 @@ const INTENTS = {
  */
 const detectIntent = async (text, history = [], userProfile = {}) => {
     try {
+        // Reduce history scope to last 2 turns to prevent "stuck/looping" intent lock-in
         const contextStr = history.length > 0
-            ? `Recent conversation:\n${history.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n')}\n\n`
+            ? `Brief context:\n${history.slice(-2).map(m => `${m.role}: ${m.content}`).join('\n')}\n\n`
             : '';
 
         const profileStr = userProfile.locationPreference
             ? `Current preferences — Location: ${userProfile.locationPreference}, Budget: ${formatCurrency(userProfile.budget || 0)}, Type: ${userProfile.propertyType || 'any'}\n\n`
             : '';
 
-        const prompt = `${profileStr}${contextStr}User message: "${text}"
+        const prompt = `${profileStr}${contextStr}LATEST USER MESSAGE (Crucial - base your intent solely on this): "${text}"
 
-Classify this real estate customer message into ONE of these intents:
+Classify the LATEST user message into ONE of these intents:
 - greet: Hello, hi, namaste, good morning, start
 - property_search: Looking for property, show properties, search, find flat/plot/villa
 - location_query: Asking about a specific location, "show me in Tupudana", "properties near Ranchi"
