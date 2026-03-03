@@ -280,9 +280,16 @@ const handleAgentAddPropertyFlow = async (phone, text, user, agent) => {
 
         case 'ask_location':
             user.conversationState.data.location = text;
+            user.conversationState.step = 'ask_area';
+            await user.save();
+            await whatsappService.sendTextMessage(phone, `📍 Location: *${text}* ✅\n\n📐 Enter *property area* (e.g., 1200 sqft):`);
+            break;
+
+        case 'ask_area':
+            user.conversationState.data.area = parseFloat(text) || 0;
             user.conversationState.step = 'ask_description';
             await user.save();
-            await whatsappService.sendTextMessage(phone, `📍 Location: *${text}* ✅\n\n📝 Enter *description*:`);
+            await whatsappService.sendTextMessage(phone, `📐 Area: *${text}* ✅\n\n📝 Enter *description*:`);
             break;
 
         case 'ask_description':
@@ -302,6 +309,7 @@ const handleAgentAddPropertyFlow = async (phone, text, user, agent) => {
                     type: d.type,
                     price: d.price,
                     location: d.location,
+                    area: d.area || 0,
                     description: d.description,
                     images: d.images || [],
                     videos: d.videos || [],

@@ -9,7 +9,6 @@ const userSchema = new mongoose.Schema({
     locationPreference: { type: String, default: '' },
     propertyType: {
         type: String,
-        enum: ['apartment', 'villa', 'plot', 'commercial', 'farmhouse', ''],
         default: '',
     },
     timeline: { type: String, default: '' },
