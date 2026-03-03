@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -33,31 +34,58 @@ const navItems = [
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const [open, setOpen] = useState(false);
 
     return (
-        <aside className="sidebar">
-            <div className="sidebar-logo">
-                <div className="logo-icon">🏠</div>
-                <div>
-                    <h1>Trivastu Realty</h1>
-                    <span className="subtitle">Admin Panel</span>
-                </div>
-            </div>
+        <>
+            {/* Hamburger button — visible on small screens */}
+            <button
+                className="sidebar-hamburger"
+                onClick={() => setOpen(true)}
+                aria-label="Open menu"
+            >
+                ☰
+            </button>
 
-            <nav className="sidebar-nav">
-                {navItems.map((section) => (
-                    <div key={section.section} className="nav-section">
-                        <div className="nav-section-title">{section.section}</div>
-                        {section.items.map((item) => (
-                            <Link key={item.href} href={item.href}
-                                className={`nav-link ${pathname === item.href ? 'active' : ''}`}>
-                                <span className="icon">{item.icon}</span>
-                                {item.label}
-                            </Link>
-                        ))}
+            {/* Backdrop overlay for mobile */}
+            {open && (
+                <div className="sidebar-backdrop" onClick={() => setOpen(false)} />
+            )}
+
+            <aside className={`sidebar ${open ? 'sidebar-open' : ''}`}>
+                <div className="sidebar-logo">
+                    <div className="logo-icon">🏠</div>
+                    <div>
+                        <h1>Trivastu Realty</h1>
+                        <span className="subtitle">Admin Panel</span>
                     </div>
-                ))}
-            </nav>
-        </aside>
+                    {/* Close button inside sidebar for mobile */}
+                    <button
+                        className="sidebar-close"
+                        onClick={() => setOpen(false)}
+                        aria-label="Close menu"
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                <nav className="sidebar-nav">
+                    {navItems.map((section) => (
+                        <div key={section.section} className="nav-section">
+                            <div className="nav-section-title">{section.section}</div>
+                            {section.items.map((item) => (
+                                <Link key={item.href} href={item.href}
+                                    className={`nav-link ${pathname === item.href ? 'active' : ''}`}
+                                    onClick={() => setOpen(false)}
+                                >
+                                    <span className="icon">{item.icon}</span>
+                                    {item.label}
+                                </Link>
+                            ))}
+                        </div>
+                    ))}
+                </nav>
+            </aside>
+        </>
     );
 }

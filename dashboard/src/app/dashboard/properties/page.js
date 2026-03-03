@@ -19,6 +19,25 @@ export default function PropertiesPage() {
         title: '', type: 'apartment', price: '', location: '', area: '', unit: 'sqft', agentCommissionRate: 2.0, bedrooms: '', description: '', projectName: '',
     });
     const [images, setImages] = useState([]);
+    const [previews, setPreviews] = useState([]);
+
+    const handleMediaAdd = (e) => {
+        const newFiles = Array.from(e.target.files);
+        setImages(prev => [...prev, ...newFiles]);
+        const newPreviews = newFiles.map(f => ({
+            name: f.name,
+            type: f.type,
+            url: URL.createObjectURL(f),
+        }));
+        setPreviews(prev => [...prev, ...newPreviews]);
+        // Reset input so same file can be picked again if needed
+        e.target.value = '';
+    };
+
+    const removeMedia = (idx) => {
+        setImages(prev => prev.filter((_, i) => i !== idx));
+        setPreviews(prev => prev.filter((_, i) => i !== idx));
+    };
 
     useEffect(() => { loadProperties(); }, [filter]);
 
@@ -56,6 +75,7 @@ export default function PropertiesPage() {
             setShowModal(false);
             setForm({ title: '', type: 'apartment', price: '', location: '', area: '', unit: 'sqft', agentCommissionRate: 2.0, bedrooms: '', description: '', projectName: '' });
             setImages([]);
+            setPreviews([]);
             loadProperties();
         } catch (err) { console.error(err); }
     };
@@ -129,6 +149,9 @@ export default function PropertiesPage() {
                                 </>
                             )}
                             <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={() => handleDelete(prop._id)}>🗑️</button>
+                            <a href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/property/${prop._id}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="btn btn-outline btn-sm" title="Public Page">🔗</a>
                         </div>
                     </div>
                 ))}
@@ -213,9 +236,26 @@ export default function PropertiesPage() {
                                         onChange={(e) => setForm({ ...form, description: e.target.value })}></textarea>
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">Images</label>
-                                    <input type="file" multiple accept="image/*" className="form-input"
-                                        onChange={(e) => setImages(Array.from(e.target.files))} />
+                                    <label className="form-label">Photos & Videos</label>
+                                    <input type="file" multiple accept="image/*,video/*" className="form-input"
+                                        onChange={handleMediaAdd} />
+                                    {previews.length > 0 && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' }}>
+                                            {previews.map((p, i) => (
+                                                <div key={i} style={{ position: 'relative', width: '80px' }}>
+                                                    {p.type.startsWith('video') ? (
+                                                        <div style={{ width: 80, height: 60, background: '#1a1a2e', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🎬</div>
+                                                    ) : (
+                                                        <img src={p.url} alt={p.name} style={{ width: 80, height: 60, objectFit: 'cover', borderRadius: 6 }} />
+                                                    )}
+                                                    <button type="button" onClick={() => removeMedia(i)}
+                                                        style={{ position: 'absolute', top: -6, right: -6, background: 'var(--danger)', border: 'none', borderRadius: '50%', width: 18, height: 18, cursor: 'pointer', fontSize: 10, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                                                    <div style={{ fontSize: 9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', marginTop: 2 }}>{p.name}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Click multiple times to add more files. Click ✕ to remove.</div>
                                 </div>
                             </div>
                             <div className="modal-footer">

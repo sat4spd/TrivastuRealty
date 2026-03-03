@@ -11,7 +11,20 @@ const logger = require('../utils/logger');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-// GET /api/properties — List properties
+// GET /api/properties/:id/public — No auth required, for shareable property page
+router.get('/:id/public', async (req, res) => {
+    try {
+        const property = await Property.findById(req.params.id).lean();
+        if (!property || property.status !== 'approved') {
+            return res.status(404).json({ error: 'Property not found or not available' });
+        }
+        res.json({ property });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch property' });
+    }
+});
+
+// GET /api/properties — List properties (auth required)
 router.get('/', auth, async (req, res) => {
     try {
         const { status, type, location, minPrice, maxPrice, page = 1, limit = 20 } = req.query;

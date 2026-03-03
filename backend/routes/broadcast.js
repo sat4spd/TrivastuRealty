@@ -10,8 +10,8 @@ const router = express.Router();
 // POST /api/broadcast/send
 router.post('/send', auth, authorize('admin'), audit('send', 'broadcast'), async (req, res) => {
     try {
-        const { templateName, filters, customMessage } = req.body;
-        const result = await sendBroadcast(req.user._id, templateName, filters, customMessage);
+        const { templateName, filters, customMessage, targetAudience, propertyId } = req.body;
+        const result = await sendBroadcast(req.user._id, templateName, filters, customMessage, targetAudience || 'customers', propertyId || null);
         res.json(result);
     } catch (error) {
         logger.error('Broadcast error:', error);

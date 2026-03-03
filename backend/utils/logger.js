@@ -1,5 +1,6 @@
 const LOG_LEVELS = { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3 };
-const currentLevel = process.env.NODE_ENV === 'production' ? LOG_LEVELS.INFO : LOG_LEVELS.DEBUG;
+// In production show DEBUG so webhook/message activity appears in dashboard logs
+const currentLevel = LOG_LEVELS.DEBUG;
 
 const timestamp = () => new Date().toISOString();
 
@@ -17,11 +18,12 @@ const emitLog = (level, ...args) => {
     else if (level === 'WARN') console.warn(formatted);
     else console.log(formatted);
 
-    // Emit to dashboard
+    // Emit to dashboard — use clean level name for frontend filtering
     if (io) {
+        const cleanLevel = level.replace(/[^A-Za-z]/g, '').toUpperCase();
         io.emit('system_log', {
             timestamp: new Date(),
-            level: level.replace(/[^A-Za-z]/g, ''),
+            level: cleanLevel,  // e.g. 'ERROR', 'INFO', 'DEBUG', 'WARN'
             message: msg,
             raw: formatted
         });
