@@ -48,6 +48,8 @@ app.use((req, res, next) => {
     if (req.path.startsWith('/webhook')) return next();
     helmet()(req, res, next);
 });
+// Trust Nginx proxy — required for rate limiter and real IP detection
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(morgan('dev'));
 app.use(express.json({ limit: '50mb' }));
