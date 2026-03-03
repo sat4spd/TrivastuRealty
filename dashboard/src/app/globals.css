@@ -1011,7 +1011,7 @@ a:hover {
   display: none;
   position: fixed;
   top: 14px;
-  right: 14px;
+  left: 14px;
   z-index: 1100;
   background: var(--bg-card);
   border: 1px solid var(--border-glass);
