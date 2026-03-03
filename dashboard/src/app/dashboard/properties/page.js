@@ -18,6 +18,16 @@ export default function PropertiesPage() {
     const [form, setForm] = useState({
         title: '', type: 'apartment', price: '', location: '', area: '', unit: 'sqft', agentCommissionRate: 2.0, bedrooms: '', description: '', projectName: '',
     });
+
+    // Dynamic config based on property type
+    const isResidential = ['apartment', 'villa'].includes(form.type);
+    const isLand = ['plot', 'land'].includes(form.type);
+    const defaultUnit = isLand ? 'decimals' : 'sqft';
+
+    const handleTypeChange = (type) => {
+        const unit = ['plot', 'land'].includes(type) ? 'decimals' : 'sqft';
+        setForm({ ...form, type, unit, bedrooms: '' });
+    };
     const [images, setImages] = useState([]);
     const [previews, setPreviews] = useState([]);
 
@@ -175,11 +185,12 @@ export default function PropertiesPage() {
                                     <div className="form-group">
                                         <label className="form-label">Type</label>
                                         <select className="form-select" value={form.type}
-                                            onChange={(e) => setForm({ ...form, type: e.target.value })}>
-                                            <option value="apartment">Apartment</option>
-                                            <option value="villa">Villa</option>
-                                            <option value="plot">Plot</option>
-                                            <option value="commercial">Commercial</option>
+                                            onChange={(e) => handleTypeChange(e.target.value)}>
+                                            <option value="apartment">🏢 Apartment</option>
+                                            <option value="villa">🏡 Villa / House</option>
+                                            <option value="plot">🌳 Plot</option>
+                                            <option value="land">🏕️ Agricultural / Farm Land</option>
+                                            <option value="commercial">🏪 Commercial</option>
                                         </select>
                                     </div>
                                     <div className="form-group">
@@ -205,11 +216,21 @@ export default function PropertiesPage() {
                                         <label className="form-label">Area Unit</label>
                                         <select className="form-select" value={form.unit}
                                             onChange={(e) => setForm({ ...form, unit: e.target.value })}>
-                                            <option value="sqft">Sq Ft</option>
-                                            <option value="sqm">Sq M</option>
-                                            <option value="acres">Acres</option>
-                                            <option value="decimals">Decimals</option>
-                                            <option value="hectares">Hectares</option>
+                                            {isLand ? (
+                                                <>
+                                                    <option value="decimals">Decimals</option>
+                                                    <option value="acres">Acres</option>
+                                                    <option value="katha">Katha</option>
+                                                    <option value="bigha">Bigha</option>
+                                                    <option value="hectares">Hectares</option>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <option value="sqft">Sq Ft</option>
+                                                    <option value="sqm">Sq M</option>
+                                                    <option value="acres">Acres</option>
+                                                </>
+                                            )}
                                         </select>
                                     </div>
                                     <div className="form-group">
@@ -218,18 +239,28 @@ export default function PropertiesPage() {
                                             onChange={(e) => setForm({ ...form, agentCommissionRate: e.target.value })} />
                                     </div>
                                 </div>
-                                <div className="grid-2">
-                                    <div className="form-group">
-                                        <label className="form-label">Bedrooms</label>
-                                        <input type="number" className="form-input" value={form.bedrooms}
-                                            onChange={(e) => setForm({ ...form, bedrooms: e.target.value })} />
+                                {/* Bedrooms — only for residential */}
+                                {isResidential && (
+                                    <div className="grid-2">
+                                        <div className="form-group">
+                                            <label className="form-label">Bedrooms</label>
+                                            <input type="number" className="form-input" value={form.bedrooms}
+                                                onChange={(e) => setForm({ ...form, bedrooms: e.target.value })} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label className="form-label">Project Name</label>
+                                            <input type="text" className="form-input" value={form.projectName}
+                                                onChange={(e) => setForm({ ...form, projectName: e.target.value })} />
+                                        </div>
                                     </div>
+                                )}
+                                {!isResidential && (
                                     <div className="form-group">
-                                        <label className="form-label">Project Name</label>
+                                        <label className="form-label">Project / Society Name</label>
                                         <input type="text" className="form-input" value={form.projectName}
                                             onChange={(e) => setForm({ ...form, projectName: e.target.value })} />
                                     </div>
-                                </div>
+                                )}
                                 <div className="form-group">
                                     <label className="form-label">Description</label>
                                     <textarea className="form-textarea" value={form.description}

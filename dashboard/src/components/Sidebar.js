@@ -38,13 +38,13 @@ export default function Sidebar() {
 
     return (
         <>
-            {/* Hamburger button — visible on small screens */}
+            {/* Hamburger button — toggles sidebar open/close on small screens */}
             <button
                 className="sidebar-hamburger"
-                onClick={() => setOpen(true)}
-                aria-label="Open menu"
+                onClick={() => setOpen(o => !o)}
+                aria-label={open ? 'Close menu' : 'Open menu'}
             >
-                ☰
+                {open ? '✕' : '☰'}
             </button>
 
             {/* Backdrop overlay for mobile */}
@@ -59,14 +59,6 @@ export default function Sidebar() {
                         <h1>Trivastu Realty</h1>
                         <span className="subtitle">Admin Panel</span>
                     </div>
-                    {/* Close button inside sidebar for mobile */}
-                    <button
-                        className="sidebar-close"
-                        onClick={() => setOpen(false)}
-                        aria-label="Close menu"
-                    >
-                        ✕
-                    </button>
                 </div>
 
                 <nav className="sidebar-nav">
