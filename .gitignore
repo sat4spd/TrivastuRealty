@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.npm
+
+# Environment variables - NEVER commit these
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Backups (generated at runtime)
+backups/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+.next/
+dist/
+build/
+
+# Misc
+.cache/
+coverage/
