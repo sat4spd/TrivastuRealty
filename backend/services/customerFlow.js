@@ -141,6 +141,11 @@ const handleCustomerMessage = async (phone, message, user) => {
         return handleOnboardingStep(phone, text, user);
     }
 
+    const lower = text.toLowerCase();
+    if (['menu', 'hi', 'hello', 'hey', 'start', 'hlo', 'namaste'].includes(lower)) {
+        return handleReturningCustomer(phone, user);
+    }
+
     // Default to Smart Intent Handler
     return handleSmartMessage(phone, text, user);
 };
@@ -149,6 +154,10 @@ const handleCustomerMessage = async (phone, message, user) => {
 const handleOnboardingStep = async (phone, text, user) => {
     const lower = text.toLowerCase();
     const state = user.conversationState;
+
+    if (['menu', 'hi', 'hello', 'hey', 'start', 'hlo', 'namaste', 'cancel'].includes(lower)) {
+        return handleReturningCustomer(phone, user);
+    }
 
     // Safety hatch out of onboarding if they ask something complex
     if (state.step !== STEPS.ASK_NAME && text.length > 20) {
