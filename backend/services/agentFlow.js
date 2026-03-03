@@ -33,7 +33,8 @@ const handleAgentRegistration = async (phone) => {
 
 // ── AGENT REGISTRATION FLOW ──
 const handleAgentRegistrationFlow = async (phone, text, user) => {
-    if (text.toLowerCase() === 'cancel') {
+    const lower = text.toLowerCase().trim();
+    if (['cancel', 'menu', 'hi', 'hello', 'start', 'hey'].includes(lower)) {
         user.conversationState = {};
         user.role = 'customer';
         await user.save();
@@ -222,7 +223,8 @@ const startAgentAddProperty = async (phone, user) => {
 };
 
 const handleAgentAddPropertyFlow = async (phone, text, user, agent) => {
-    if (text.toLowerCase() === 'cancel') {
+    const lower = text.toLowerCase().trim();
+    if (['cancel', 'menu', 'hi', 'hello', 'start', 'hey'].includes(lower)) {
         user.conversationState = {};
         await user.save();
         return showAgentMenu(phone, agent);

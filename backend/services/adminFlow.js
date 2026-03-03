@@ -175,7 +175,8 @@ const startAddAgent = async (phone, user) => {
 };
 
 const handleAdminAddAgentFlow = async (phone, text, user) => {
-    if (text.toLowerCase() === 'cancel') {
+    const lower = text.toLowerCase().trim();
+    if (['cancel', 'menu', 'hi', 'hello', 'start', 'hey'].includes(lower)) {
         user.conversationState = {}; await user.save();
         return showAdminMenu(phone);
     }
@@ -328,7 +329,8 @@ const startAddProperty = async (phone, user) => {
 };
 
 const handleAdminAddPropertyFlow = async (phone, text, user) => {
-    if (text.toLowerCase() === 'cancel') { user.conversationState = {}; await user.save(); return showAdminMenu(phone); }
+    const lower = text.toLowerCase().trim();
+    if (['cancel', 'menu', 'hi', 'hello', 'start', 'hey'].includes(lower)) { user.conversationState = {}; await user.save(); return showAdminMenu(phone); }
     const d = user.conversationState.data;
     switch (user.conversationState.step) {
         case 'ask_title':
