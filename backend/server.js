@@ -1,0 +1,103 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+
+const connectDB = require('./config/db');
+const { apiLimiter, webhookLimiter } = require('./middleware/rateLimiter');
+const { setSocketIO } = require('./services/notificationService');
+const { startBackupService } = require('./services/backupService');
+const logger = require('./utils/logger');
+
+// Import routes
+const webhookRoutes = require('./routes/webhook');
+const authRoutes = require('./routes/auth');
+const agentRoutes = require('./routes/agents');
+const propertyRoutes = require('./routes/properties');
+const leadRoutes = require('./routes/leads');
+const broadcastRoutes = require('./routes/broadcast');
+const groupRoutes = require('./routes/groups');
+const documentsRoutes = require('./routes/documents');
+const analyticsRoutes = require('./routes/analytics');
+const chatRoutes = require('./routes/chats');
+
+const app = express();
+const httpServer = createServer(app);
+
+// Socket.io setup
+const io = new Server(httpServer, {
+    cors: { origin: '*', methods: ['GET', 'POST'] },
+});
+
+setSocketIO(io);
+logger.setSocketIO(io);
+require('./services/chatLogger').setSocketIO(io);
+
+io.on('connection', (socket) => {
+    logger.info(`Dashboard client connected: ${socket.id}`);
+    socket.on('disconnect', () => {
+        logger.debug(`Dashboard client disconnected: ${socket.id}`);
+    });
+});
+
+// Middleware — skip helmet for webhook so Meta verification works through ngrok
+app.use((req, res, next) => {
+    if (req.path.startsWith('/webhook')) return next();
+    helmet()(req, res, next);
+});
+app.use(cors());
+app.use(morgan('dev'));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Root route
+app.get('/', (req, res) => {
+    res.json({ name: 'Trivastu Realty API', status: 'running' });
+});
+
+// Routes — webhook MUST be before other middleware
+app.use('/webhook', webhookLimiter, webhookRoutes);
+app.use('/api/auth', apiLimiter, authRoutes);
+app.use('/api/agents', apiLimiter, agentRoutes);
+app.use('/api/properties', apiLimiter, propertyRoutes);
+app.use('/api/leads', apiLimiter, leadRoutes);
+app.use('/api/broadcast', apiLimiter, broadcastRoutes);
+app.use('/api/groups', apiLimiter, groupRoutes);
+app.use('/api/documents', apiLimiter, documentsRoutes);
+app.use('/api/analytics', apiLimiter, analyticsRoutes);
+app.use('/api/chats', apiLimiter, chatRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+    logger.error('Unhandled error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+});
+
+// Start server
+const PORT = process.env.PORT || 3000;
+
+const start = async () => {
+    await connectDB();
+    httpServer.listen(PORT, () => {
+        logger.info(`🚀 Trivastu Realty Backend running on port ${PORT}`);
+        logger.info(`📱 WhatsApp webhook: http://localhost:${PORT}/webhook`);
+        logger.info(`📊 API base: http://localhost:${PORT}/api`);
+        logger.info(`💚 Health: http://localhost:${PORT}/health`);
+
+        // Start automated daily backups
+        startBackupService();
+    });
+};
+
+start().catch(err => {
+    logger.error('Failed to start server:', err);
+    process.exit(1);
+});

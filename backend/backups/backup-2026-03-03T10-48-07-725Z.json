@@ -1,0 +1,75 @@
+{
+  "ChatMessage": [],
+  "User": [
+    {
+      "_id": "69a6987f35f5dc4e7bf2e6d3",
+      "phone": "+918105180539",
+      "name": "Satya Prakash",
+      "role": "admin",
+      "email": "admin@trivastu.com",
+      "budget": 0,
+      "locationPreference": "",
+      "propertyType": "",
+      "timeline": "",
+      "conversationState": {
+        "flow": "",
+        "step": ""
+      },
+      "isActive": true,
+      "passwordHash": "$2a$10$25MiNUaNvu4dnXLgvd7bCuQ5Kv4oGObxuut.X2uLyVxUydrkpUl4q",
+      "lastInteraction": "2026-03-03T08:17:41.009Z",
+      "createdAt": "2026-03-03T08:14:55.236Z",
+      "updatedAt": "2026-03-03T08:42:14.384Z",
+      "__v": 0
+    },
+    {
+      "_id": "69a6bbdafb2b6217295c4fc7",
+      "phone": "+918092241100",
+      "name": "Admin",
+      "role": "admin",
+      "email": "",
+      "budget": 0,
+      "locationPreference": "",
+      "propertyType": "",
+      "timeline": "",
+      "conversationState": {
+        "flow": "",
+        "step": ""
+      },
+      "isActive": true,
+      "passwordHash": "",
+      "lastInteraction": "2026-03-03T10:45:46.765Z",
+      "createdAt": "2026-03-03T10:45:46.766Z",
+      "updatedAt": "2026-03-03T10:45:46.766Z",
+      "__v": 0
+    },
+    {
+      "_id": "69a6bbdcfb2b6217295c4fcc",
+      "phone": "+919955496674",
+      "name": "Admin",
+      "role": "admin",
+      "email": "",
+      "budget": 0,
+      "locationPreference": "",
+      "propertyType": "",
+      "timeline": "",
+      "conversationState": {
+        "flow": "",
+        "step": ""
+      },
+      "isActive": true,
+      "passwordHash": "",
+      "lastInteraction": "2026-03-03T10:45:48.274Z",
+      "createdAt": "2026-03-03T10:45:48.275Z",
+      "updatedAt": "2026-03-03T10:45:48.275Z",
+      "__v": 0
+    }
+  ],
+  "Agent": [],
+  "Lead": [],
+  "Property": [],
+  "AuditLog": [],
+  "Commission": [],
+  "BroadcastLog": [],
+  "Group": []
+}

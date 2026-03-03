@@ -1,0 +1,77 @@
+{
+  "ChatMessage": [
+    {
+      "_id": "69a6bb8a47fef8e59ef78867",
+      "phone": "+917757920539",
+      "direction": "incoming",
+      "messageType": "text",
+      "content": "Hi",
+      "mediaUrl": "",
+      "role": "new_user",
+      "timestamp": "2026-03-03T10:44:26.448Z",
+      "__v": 0
+    },
+    {
+      "_id": "69a6bb8b47fef8e59ef7886a",
+      "phone": "+917757920539",
+      "direction": "outgoing",
+      "messageType": "text",
+      "content": "🏠 *Welcome to Trivastu Realty!* 🏠\n\nWe're one of the fastest-growing real estate companies, helping you find your dream property.\n\nI'm your personal assistant and I'll help you explore properties that match your needs.\n\nTo get started, please tell me your *full name*? 👤",
+      "mediaUrl": "",
+      "role": "customer",
+      "timestamp": "2026-03-03T10:44:27.304Z",
+      "__v": 0
+    }
+  ],
+  "User": [
+    {
+      "_id": "69a6987f35f5dc4e7bf2e6d3",
+      "phone": "+918105180539",
+      "name": "Satya Prakash",
+      "role": "admin",
+      "email": "admin@trivastu.com",
+      "budget": 0,
+      "locationPreference": "",
+      "propertyType": "",
+      "timeline": "",
+      "conversationState": {
+        "flow": "",
+        "step": ""
+      },
+      "isActive": true,
+      "passwordHash": "$2a$10$25MiNUaNvu4dnXLgvd7bCuQ5Kv4oGObxuut.X2uLyVxUydrkpUl4q",
+      "lastInteraction": "2026-03-03T08:17:41.009Z",
+      "createdAt": "2026-03-03T08:14:55.236Z",
+      "updatedAt": "2026-03-03T08:42:14.384Z",
+      "__v": 0
+    },
+    {
+      "_id": "69a6bb8a47fef8e59ef78865",
+      "phone": "+917757920539",
+      "name": "",
+      "role": "customer",
+      "email": "",
+      "budget": 0,
+      "locationPreference": "",
+      "propertyType": "",
+      "timeline": "",
+      "conversationState": {
+        "flow": "onboarding",
+        "step": "ask_name"
+      },
+      "isActive": true,
+      "passwordHash": "",
+      "lastInteraction": "2026-03-03T10:44:26.439Z",
+      "createdAt": "2026-03-03T10:44:26.444Z",
+      "updatedAt": "2026-03-03T10:44:26.444Z",
+      "__v": 0
+    }
+  ],
+  "Agent": [],
+  "Lead": [],
+  "Property": [],
+  "AuditLog": [],
+  "Commission": [],
+  "BroadcastLog": [],
+  "Group": []
+}
