@@ -247,14 +247,51 @@ const searchCustomerProfile = async (phone, customerPhone) => {
     await whatsappService.sendTextMessage(phone, msg);
 };
 
-const updateLeadStatus = async (phone, leadId, status) => {
+const updateLeadStatus = async (phone, leadId, argumentsText) => {
     try {
-        const lead = await Lead.findById(leadId.trim());
+        const lead = await Lead.findById(leadId.trim()).populate('customerId');
         if (!lead) return whatsappService.sendTextMessage(phone, `❌ Lead not found.`);
-        lead.status = status.toLowerCase().replace(/ /g, '_');
-        await lead.save();
-        await whatsappService.sendTextMessage(phone, `✅ Lead ${leadId} updated to *${status}*`);
-    } catch { await whatsappService.sendTextMessage(phone, `❌ Invalid lead ID.`); }
+
+        const args = argumentsText.trim().split(' ');
+        const statusOrAction = args[0].toLowerCase().replace(/ /g, '_');
+
+        if (statusOrAction === 'assigned' && args.length > 1) {
+            // Manual Agent Assignment: update lead <ID> assigned <AgentPhone>
+            let agentPhone = args[1].replace(/\s/g, '');
+            if (!agentPhone.startsWith('+')) agentPhone = agentPhone.length === 10 ? '+91' + agentPhone : '+' + agentPhone;
+
+            const agent = await Agent.findOne({ phone: agentPhone });
+            if (!agent) return whatsappService.sendTextMessage(phone, `❌ Agent not found: ${agentPhone}`);
+
+            lead.status = 'assigned';
+            lead.agentId = agent._id;
+            await lead.save();
+
+            // Notify Admin
+            await whatsappService.sendTextMessage(phone, `✅ Lead ${leadId} manually assigned to *${agent.name}*`);
+
+            // Notify Agent
+            const custName = lead.customerId?.name || 'Unknown';
+            const custPhone = lead.customerId?.phone || 'Unknown';
+            let alertMsg = `🚨 *New Lead Assigned to You!* 🚨\n\n`;
+            alertMsg += `👤 *Customer:* ${custName}\n`;
+            alertMsg += `📞 *Phone:* ${custPhone}\n`;
+            alertMsg += `💰 *Budget:* ${formatCurrency(lead.budget)}\n`;
+            alertMsg += `📍 *Location:* ${lead.location}\n`;
+            alertMsg += `🏠 *Property Type:* ${lead.propertyType}\n\n`;
+            alertMsg += `Please contact them immediately. Type *MENU* to manage your leads.`;
+
+            await whatsappService.sendTextMessage(agent.phone, alertMsg);
+
+        } else {
+            // General Status Update
+            lead.status = statusOrAction;
+            await lead.save();
+            await whatsappService.sendTextMessage(phone, `✅ Lead ${leadId} updated to *${statusOrAction}*`);
+        }
+    } catch {
+        await whatsappService.sendTextMessage(phone, `❌ Invalid lead ID or syntax.`);
+    }
 };
 
 const updatePropertyField = async (phone, propertyId, field, value) => {
@@ -338,7 +375,14 @@ const rejectAgent = async (phone, agentPhone) => {
     let cp = agentPhone.replace(/\s/g, '');
     if (!cp.startsWith('+')) cp = cp.length === 10 ? '+91' + cp : '+' + cp;
     const agent = await Agent.findOne({ phone: cp });
-    if (agent) { agent.status = 'rejected'; await agent.save(); await whatsappService.sendTextMessage(phone, `❌ Agent *${agent.name}* rejected.`); }
+    if (agent) {
+        agent.status = 'rejected';
+        await agent.save();
+        await whatsappService.sendTextMessage(phone, `❌ Agent *${agent.name}* rejected/suspended.`);
+        try {
+            await whatsappService.sendTextMessage(cp, `⚠️ Your agent account with Trivastu Realty has been suspended/rejected by the admin. Please contact support if you believe this is a mistake.`);
+        } catch (e) { }
+    }
 };
 
 const approveProperty = async (phone, propertyId) => {

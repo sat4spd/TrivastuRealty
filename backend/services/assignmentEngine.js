@@ -55,14 +55,22 @@ const assignAgentToLead = async (lead) => {
 
         logger.info(`Lead ${lead._id} automatically assigned to Agent ${selectedAgent.name} (Load: ${agentLoads[0].activeCount})`);
 
+        const fullLead = await Lead.findById(lead._id).populate('customerId');
+        const custName = fullLead.customerId?.name || 'Unknown';
+        const custPhone = fullLead.customerId?.phone || 'Unknown';
+
         // Notify the agent on WhatsApp
         const whatsappService = require('./whatsappService');
-        await whatsappService.sendTextMessage(selectedAgent.phone,
-            `🚨 *New Lead Assigned!*\n\n` +
-            `A new lead matching your area has been assigned to you.\n` +
-            `📍 Location: ${lead.location}\n💰 Budget: ₹${lead.budget}\n\n` +
-            `Type *my leads* to view details and contact them.`
-        );
+        let alertMsg = `🚨 *New Lead Automatically Assigned!* 🚨\n\n`;
+        alertMsg += `A new lead matching your operating area was generated.\n\n`;
+        alertMsg += `👤 *Customer:* ${custName}\n`;
+        alertMsg += `📞 *Phone:* ${custPhone}\n`;
+        alertMsg += `💰 *Budget:* ₹${fullLead.budget}\n`;
+        alertMsg += `📍 *Location:* ${fullLead.location}\n`;
+        alertMsg += `🏠 *Property Type:* ${fullLead.propertyType || 'Any'}\n\n`;
+        alertMsg += `Please prioritize contacting them today. Type *MENU* to view your full dashboard.`;
+
+        await whatsappService.sendTextMessage(selectedAgent.phone, alertMsg);
 
         return selectedAgent._id;
 
