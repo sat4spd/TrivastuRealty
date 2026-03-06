@@ -114,7 +114,7 @@ export default function LeadsPage() {
                                 </td>
                                 <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{formatCurrency(lead.budget)}</td>
                                 <td>{lead.location || '-'}</td>
-                                <td style={{ textTransform: 'capitalize' }}>{lead.propertyType || '-'}</td>
+                                <td style={{ textTransform: 'capitalize' }}>{(lead.propertyType || '').replace('_', ' ') || '-'}</td>
                                 <td>
                                     {lead.agentId ? (
                                         <span className="badge badge-purple">{lead.agentId.name}</span>
@@ -126,10 +126,10 @@ export default function LeadsPage() {
                                         </select>
                                     )}
                                 </td>
-                                <td><span className={`badge ${getStatusBadge(lead.status)}`}>{lead.status.replace('_', ' ')}</span></td>
+                                <td><span className={`badge ${getStatusBadge(lead.status || 'new')}`}>{(lead.status || 'new').replace('_', ' ')}</span></td>
                                 <td>
                                     <select className="form-select" style={{ width: '120px', padding: '4px 8px', fontSize: '12px' }}
-                                        value={lead.status} onChange={(e) => handleStatusChange(lead, e.target.value)}>
+                                        value={lead.status || 'new'} onChange={(e) => handleStatusChange(lead, e.target.value)}>
                                         {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
                                     </select>
                                 </td>
