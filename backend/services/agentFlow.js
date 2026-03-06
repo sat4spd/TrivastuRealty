@@ -198,10 +198,14 @@ const showAgentLeads = async (phone, agent) => {
             const scoreStr = l.aiScore > 0 ? `[Score: ${l.aiScore}/100]` : '';
             const personaStr = l.buyerPersona !== 'undecided' ? ` | 👤 ${l.buyerPersona}` : '';
 
-            msg += `${i + 1}. *${l.customerId?.name || 'Unknown'}* ${l.isHighValue ? '💎' : ''} ${fireEmoji}\n` +
-                `   💰 ${formatCurrency(l.budget)} | 📍 ${l.location}${personaStr}\n` +
+            const cName = l.customerId?.name && l.customerId.name !== "Unknown" ? l.customerId.name : (l.name || 'Unknown');
+            const cPhone = l.customerId?.phone || l.phone || 'No phone';
+
+            msg += `${i + 1}. *${cName}* ${l.isHighValue ? '💎' : ''} ${fireEmoji}\n` +
+                `   📞 ${cPhone}\n` +
+                `   💰 Budget: ${formatCurrency(l.budget)} | 📍 ${l.location || 'Any'}${personaStr}\n` +
                 `   ${scoreStr} Urgency: ${l.urgency || 'low'}\n` +
-                `   Status: ${l.status} | ID: ${l._id}\n\n`;
+                `   Status: *${l.status}* | ID: ${l._id}\n\n`;
         });
         msg += `\nTo update: _update lead <ID> contacted_`;
     }
