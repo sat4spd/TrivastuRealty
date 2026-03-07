@@ -11,6 +11,7 @@ export default function TestimonialsPage() {
     const [form, setForm] = useState({
         authorName: '', authorRole: 'Client', content: '', rating: 5, image: '', isPublished: true
     });
+    const [imageFile, setImageFile] = useState(null);
 
     useEffect(() => { loadData(); }, []);
 
@@ -41,21 +42,27 @@ export default function TestimonialsPage() {
             authorName: testimonial.authorName, authorRole: testimonial.authorRole, content: testimonial.content,
             rating: testimonial.rating, image: testimonial.image, isPublished: testimonial.isPublished
         });
+        setImageFile(null);
         setShowModal(true);
     };
 
     const handleSave = async (e) => {
         e.preventDefault();
         try {
+            const formData = new FormData();
+            Object.keys(form).forEach(key => formData.append(key, form[key]));
+            if (imageFile) formData.append('image', imageFile);
+
             const otpCode = await requestCmsOtp();
             if (editingId) {
-                await cmsAPI.updateTestimonial(editingId, form, otpCode);
+                await cmsAPI.updateTestimonial(editingId, formData, otpCode);
             } else {
-                await cmsAPI.createTestimonial(form, otpCode);
+                await cmsAPI.createTestimonial(formData, otpCode);
             }
             setShowModal(false);
             setEditingId(null);
             setForm({ authorName: '', authorRole: 'Client', content: '', rating: 5, image: '', isPublished: true });
+            setImageFile(null);
             loadData();
         } catch (err) {
             if (err !== 'OTP verification cancelled') console.error(err);
@@ -76,6 +83,7 @@ export default function TestimonialsPage() {
                 <button className="btn btn-primary" onClick={() => {
                     setEditingId(null);
                     setForm({ authorName: '', authorRole: 'Client', content: '', rating: 5, image: '', isPublished: true });
+                    setImageFile(null);
                     setShowModal(true);
                 }}>+ Add Testimonial</button>
             </div>
@@ -139,9 +147,10 @@ export default function TestimonialsPage() {
                                         onChange={(e) => setForm({ ...form, content: e.target.value })}></textarea>
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">Author Avatar URL (Optional)</label>
-                                    <input type="text" className="form-input" placeholder="/images/user.png or http..." value={form.image}
-                                        onChange={(e) => setForm({ ...form, image: e.target.value })} />
+                                    <label className="form-label">Author Avatar Option (Upload)</label>
+                                    <input type="file" className="form-input" accept="image/*"
+                                        onChange={(e) => setImageFile(e.target.files[0])} />
+                                    {form.image && !imageFile && <p style={{ fontSize: '12px', marginTop: '4px' }}>Current profile picture (<a href={form.image} target="_blank">View</a>)</p>}
                                 </div>
                             </div>
                             <div className="modal-footer">

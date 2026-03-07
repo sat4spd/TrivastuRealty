@@ -11,6 +11,7 @@ export default function TeamPage() {
     const [form, setForm] = useState({
         name: '', role: '', category: 'Contractor', experience: '', description: '', image: '', contactEmail: '', contactPhone: '', isPublished: true
     });
+    const [imageFile, setImageFile] = useState(null);
 
     useEffect(() => { loadData(); }, []);
 
@@ -42,21 +43,27 @@ export default function TeamPage() {
             description: member.description, image: member.image, contactEmail: member.contactEmail, contactPhone: member.contactPhone,
             isPublished: member.isPublished
         });
+        setImageFile(null);
         setShowModal(true);
     };
 
     const handleSave = async (e) => {
         e.preventDefault();
         try {
+            const formData = new FormData();
+            Object.keys(form).forEach(key => formData.append(key, form[key]));
+            if (imageFile) formData.append('image', imageFile);
+
             const otpCode = await requestCmsOtp();
             if (editingId) {
-                await cmsAPI.updateTeamMember(editingId, form, otpCode);
+                await cmsAPI.updateTeamMember(editingId, formData, otpCode);
             } else {
-                await cmsAPI.createTeamMember(form, otpCode);
+                await cmsAPI.createTeamMember(formData, otpCode);
             }
             setShowModal(false);
             setEditingId(null);
             setForm({ name: '', role: '', category: 'Contractor', experience: '', description: '', image: '', contactEmail: '', contactPhone: '', isPublished: true });
+            setImageFile(null);
             loadData();
         } catch (err) {
             if (err !== 'OTP verification cancelled') console.error(err);
@@ -75,6 +82,7 @@ export default function TeamPage() {
                 <button className="btn btn-primary" onClick={() => {
                     setEditingId(null);
                     setForm({ name: '', role: '', category: 'Contractor', experience: '', description: '', image: '', contactEmail: '', contactPhone: '', isPublished: true });
+                    setImageFile(null);
                     setShowModal(true);
                 }}>+ Add Member</button>
             </div>
@@ -147,9 +155,10 @@ export default function TeamPage() {
                                         onChange={(e) => setForm({ ...form, description: e.target.value })}></textarea>
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">Profile Image URL</label>
-                                    <input type="text" className="form-input" placeholder="/images/team-1.png or http..." value={form.image}
-                                        onChange={(e) => setForm({ ...form, image: e.target.value })} />
+                                    <label className="form-label">Profile Image Option (Upload)</label>
+                                    <input type="file" className="form-input" accept="image/*"
+                                        onChange={(e) => setImageFile(e.target.files[0])} />
+                                    {form.image && !imageFile && <p style={{ fontSize: '12px', marginTop: '4px' }}>Current profile picture (<a href={form.image} target="_blank">View</a>)</p>}
                                 </div>
                                 <div className="grid-2">
                                     <div className="form-group">

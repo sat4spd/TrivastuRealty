@@ -11,6 +11,7 @@ export default function ProjectsPage() {
     const [form, setForm] = useState({
         title: '', location: '', type: 'Residential', status: 'Ongoing', description: '', image: '', isPublished: true
     });
+    const [imageFile, setImageFile] = useState(null);
 
     useEffect(() => { loadData(); }, []);
 
@@ -46,21 +47,27 @@ export default function ProjectsPage() {
             image: project.image,
             isPublished: project.isPublished
         });
+        setImageFile(null);
         setShowModal(true);
     };
 
     const handleSave = async (e) => {
         e.preventDefault();
         try {
+            const formData = new FormData();
+            Object.keys(form).forEach(key => formData.append(key, form[key]));
+            if (imageFile) formData.append('image', imageFile);
+
             const otpCode = await requestCmsOtp();
             if (editingId) {
-                await cmsAPI.updateProject(editingId, form, otpCode);
+                await cmsAPI.updateProject(editingId, formData, otpCode);
             } else {
-                await cmsAPI.createProject(form, otpCode);
+                await cmsAPI.createProject(formData, otpCode);
             }
             setShowModal(false);
             setEditingId(null);
             setForm({ title: '', location: '', type: 'Residential', status: 'Ongoing', description: '', image: '', isPublished: true });
+            setImageFile(null);
             loadData();
         } catch (err) {
             if (err !== 'OTP verification cancelled') console.error(err);
@@ -79,6 +86,7 @@ export default function ProjectsPage() {
                 <button className="btn btn-primary" onClick={() => {
                     setEditingId(null);
                     setForm({ title: '', location: '', type: 'Residential', status: 'Ongoing', description: '', image: '', isPublished: true });
+                    setImageFile(null);
                     setShowModal(true);
                 }}>+ Add Project</button>
             </div>
@@ -148,9 +156,10 @@ export default function ProjectsPage() {
                                         onChange={(e) => setForm({ ...form, description: e.target.value })}></textarea>
                                 </div>
                                 <div className="form-group">
-                                    <label className="form-label">Image URL (For public website header)</label>
-                                    <input type="text" className="form-input" placeholder="/images/project-villa.png or http..." value={form.image}
-                                        onChange={(e) => setForm({ ...form, image: e.target.value })} />
+                                    <label className="form-label">Cover Image</label>
+                                    <input type="file" className="form-input" accept="image/*"
+                                        onChange={(e) => setImageFile(e.target.files[0])} />
+                                    {form.image && !imageFile && <p style={{ fontSize: '12px', marginTop: '4px' }}>Current image attached (<a href={form.image} target="_blank">View</a>)</p>}
                                 </div>
                                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                     <input type="checkbox" checked={form.isPublished} onChange={(e) => setForm({ ...form, isPublished: e.target.checked })} />

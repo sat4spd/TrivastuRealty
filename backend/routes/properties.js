@@ -58,11 +58,22 @@ router.get('/', auth, async (req, res) => {
             if (prop.media?.length > 0) {
                 for (const m of prop.media) {
                     if (m.key) {
-                        try {
-                            m.url = await getSignedDownloadUrl(m.key);
-                        } catch (e) { /* ignore */ }
+                        try { m.url = await getSignedDownloadUrl(m.key); } catch (e) { /* ignore */ }
                     }
                 }
+            }
+            // Compatibility for WhatsApp properties that store keys in 'images'
+            if (prop.images?.length > 0) {
+                const signedImages = [];
+                for (const img of prop.images) {
+                    // if it's already a full HTTP URL, push directly, else sign it
+                    if (img.startsWith('http')) {
+                        signedImages.push(img);
+                    } else {
+                        try { signedImages.push(await getSignedDownloadUrl(img)); } catch (e) { signedImages.push(img); }
+                    }
+                }
+                prop.images = signedImages;
             }
         }
 
@@ -87,6 +98,14 @@ router.get('/:id', auth, async (req, res) => {
                     try { m.url = await getSignedDownloadUrl(m.key); } catch (e) { /* ignore */ }
                 }
             }
+        }
+        if (propObj.images?.length > 0) {
+            const signedImages = [];
+            for (const img of propObj.images) {
+                if (img.startsWith('http')) signedImages.push(img);
+                else { try { signedImages.push(await getSignedDownloadUrl(img)); } catch (e) { signedImages.push(img); } }
+            }
+            propObj.images = signedImages;
         }
 
         res.json(propObj);
@@ -141,10 +160,33 @@ router.post('/', auth, authorize('admin', 'agent'), upload.array('images', 10), 
 });
 
 // PUT /api/properties/:id — Update property
-router.put('/:id', auth, authorize('admin'), requireOtpForCms, audit('update', 'property'), async (req, res) => {
+router.put('/:id', auth, authorize('admin'), requireOtpForCms, audit('update', 'property'), upload.array('images', 10), async (req, res) => {
     try {
-        const property = await Property.findByIdAndUpdate(req.params.id, req.body, { new: true });
-        if (!property) return res.status(404).json({ error: 'Property not found' });
+        const updateData = { ...req.body };
+        const existingProperty = await Property.findById(req.params.id);
+        if (!existingProperty) return res.status(404).json({ error: 'Property not found' });
+
+        let media = existingProperty.media || [];
+        let images = existingProperty.images || [];
+
+        // Attach freshly uploaded images
+        if (req.files?.length > 0) {
+            for (const file of req.files) {
+                const result = await uploadFile(file.buffer, file.originalname, 'properties');
+                media.push({ key: result.key, type: 'image' });
+                images.push(result.key); // Push raw S3 key 
+            }
+        }
+
+        updateData.media = media;
+        updateData.images = images;
+
+        // Force amenities string/array casting
+        if (updateData.amenities && typeof updateData.amenities === 'string') {
+            updateData.amenities = updateData.amenities.split(',');
+        }
+
+        const property = await Property.findByIdAndUpdate(req.params.id, updateData, { new: true });
         res.json(property);
     } catch (error) {
         res.status(500).json({ error: 'Failed to update property' });

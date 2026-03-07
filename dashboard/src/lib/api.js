@@ -93,21 +93,21 @@ export const documentsAPI = {
 export const cmsAPI = {
     // Projects
     listProjects: () => api.get('/cms/projects'),
-    createProject: (data, otpCode) => api.post('/cms/projects', data, { headers: { 'X-OTP-Code': otpCode } }),
-    updateProject: (id, data, otpCode) => api.put(`/cms/projects/${id}`, data, { headers: { 'X-OTP-Code': otpCode } }),
-    deleteProject: (id, otpCode) => api.delete(`/cms/projects/${id}`, { headers: { 'X-OTP-Code': otpCode } }),
+    createProject: (data, otpCode) => api.post('/cms/projects', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateProject: (id, data, otpCode) => api.put(`/cms/projects/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    deleteProject: (id, otpCode) => api.delete(`/cms/projects/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 
     // Team
     listTeam: () => api.get('/cms/team'),
-    createTeamMember: (data, otpCode) => api.post('/cms/team', data, { headers: { 'X-OTP-Code': otpCode } }),
-    updateTeamMember: (id, data, otpCode) => api.put(`/cms/team/${id}`, data, { headers: { 'X-OTP-Code': otpCode } }),
-    deleteTeamMember: (id, otpCode) => api.delete(`/cms/team/${id}`, { headers: { 'X-OTP-Code': otpCode } }),
+    createTeamMember: (data, otpCode) => api.post('/cms/team', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateTeamMember: (id, data, otpCode) => api.put(`/cms/team/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    deleteTeamMember: (id, otpCode) => api.delete(`/cms/team/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 
     // Testimonials
     listTestimonials: () => api.get('/cms/testimonials'),
-    createTestimonial: (data, otpCode) => api.post('/cms/testimonials', data, { headers: { 'X-OTP-Code': otpCode } }),
-    updateTestimonial: (id, data, otpCode) => api.put(`/cms/testimonials/${id}`, data, { headers: { 'X-OTP-Code': otpCode } }),
-    deleteTestimonial: (id, otpCode) => api.delete(`/cms/testimonials/${id}`, { headers: { 'X-OTP-Code': otpCode } }),
+    createTestimonial: (data, otpCode) => api.post('/cms/testimonials', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateTestimonial: (id, data, otpCode) => api.put(`/cms/testimonials/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    deleteTestimonial: (id, otpCode) => api.delete(`/cms/testimonials/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 };
 
 export default api;
