@@ -25,6 +25,7 @@ const groupRoutes = require('./routes/groups');
 const documentsRoutes = require('./routes/documents');
 const analyticsRoutes = require('./routes/analytics');
 const chatRoutes = require('./routes/chats');
+const cmsRoutes = require('./routes/cms');
 
 const app = express();
 const httpServer = createServer(app);
@@ -73,6 +74,7 @@ app.use('/api/groups', apiLimiter, groupRoutes);
 app.use('/api/documents', apiLimiter, documentsRoutes);
 app.use('/api/analytics', apiLimiter, analyticsRoutes);
 app.use('/api/chats', apiLimiter, chatRoutes);
+app.use('/api/cms', apiLimiter, cmsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

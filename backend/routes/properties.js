@@ -4,6 +4,7 @@ const Property = require('../models/Property');
 const { auth } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
 const { audit } = require('../middleware/audit');
+const { requireOtpForCms } = require('../middleware/otpVerify');
 const { uploadFile, getSignedDownloadUrl } = require('../services/s3Service');
 const { notifyAdmin, ALERT_TYPES } = require('../services/notificationService');
 const logger = require('../utils/logger');
@@ -140,7 +141,7 @@ router.post('/', auth, authorize('admin', 'agent'), upload.array('images', 10), 
 });
 
 // PUT /api/properties/:id — Update property
-router.put('/:id', auth, authorize('admin'), audit('update', 'property'), async (req, res) => {
+router.put('/:id', auth, authorize('admin'), requireOtpForCms, audit('update', 'property'), async (req, res) => {
     try {
         const property = await Property.findByIdAndUpdate(req.params.id, req.body, { new: true });
         if (!property) return res.status(404).json({ error: 'Property not found' });
@@ -151,7 +152,7 @@ router.put('/:id', auth, authorize('admin'), audit('update', 'property'), async 
 });
 
 // PUT /api/properties/:id/approve — Approve/Reject property
-router.put('/:id/approve', auth, authorize('admin'), audit('approve', 'property'), async (req, res) => {
+router.put('/:id/approve', auth, authorize('admin'), requireOtpForCms, audit('approve', 'property'), async (req, res) => {
     try {
         const { status } = req.body;
         if (!['approved', 'rejected'].includes(status)) {
@@ -176,7 +177,7 @@ router.put('/:id/approve', auth, authorize('admin'), audit('approve', 'property'
 });
 
 // DELETE /api/properties/:id
-router.delete('/:id', auth, authorize('admin'), audit('delete', 'property'), async (req, res) => {
+router.delete('/:id', auth, authorize('admin'), requireOtpForCms, audit('delete', 'property'), async (req, res) => {
     try {
         const property = await Property.findByIdAndDelete(req.params.id);
         if (!property) return res.status(404).json({ error: 'Property not found' });

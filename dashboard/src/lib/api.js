@@ -32,6 +32,9 @@ api.interceptors.response.use(
 export const authAPI = {
     login: (email, password) => api.post('/auth/login', { email, password }),
     setup: (email, password, name) => api.post('/auth/setup', { email, password, name }),
+    verifyLogin: (email, otp) => api.post('/auth/verify-login', { email, otp }),
+    resendOtp: (email) => api.post('/auth/resend-otp', { email }),
+    requestCmsOtp: (email) => api.post('/auth/request-cms-otp', { email }),
 };
 
 export const agentsAPI = {
@@ -45,12 +48,12 @@ export const agentsAPI = {
 export const propertiesAPI = {
     list: (params) => api.get('/properties', { params }),
     get: (id) => api.get(`/properties/${id}`),
-    create: (formData) => api.post('/properties', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+    create: (formData, otpCode) => api.post('/properties', formData, {
+        headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) },
     }),
-    update: (id, data) => api.put(`/properties/${id}`, data),
-    approve: (id, status) => api.put(`/properties/${id}/approve`, { status }),
-    delete: (id) => api.delete(`/properties/${id}`),
+    update: (id, data, otpCode) => api.put(`/properties/${id}`, data, { headers: { 'X-OTP-Code': otpCode } }),
+    approve: (id, status, otpCode) => api.put(`/properties/${id}/approve`, { status }, { headers: { 'X-OTP-Code': otpCode } }),
+    delete: (id, otpCode) => api.delete(`/properties/${id}`, { headers: { 'X-OTP-Code': otpCode } }),
 };
 
 export const leadsAPI = {
@@ -85,6 +88,26 @@ export const documentsAPI = {
         headers: { 'Content-Type': 'multipart/form-data' },
     }),
     getUrl: (key) => api.get(`/documents/${key}/url`),
+};
+
+export const cmsAPI = {
+    // Projects
+    listProjects: () => api.get('/cms/projects'),
+    createProject: (data, otpCode) => api.post('/cms/projects', data, { headers: { 'X-OTP-Code': otpCode } }),
+    updateProject: (id, data, otpCode) => api.put(`/cms/projects/${id}`, data, { headers: { 'X-OTP-Code': otpCode } }),
+    deleteProject: (id, otpCode) => api.delete(`/cms/projects/${id}`, { headers: { 'X-OTP-Code': otpCode } }),
+
+    // Team
+    listTeam: () => api.get('/cms/team'),
+    createTeamMember: (data, otpCode) => api.post('/cms/team', data, { headers: { 'X-OTP-Code': otpCode } }),
+    updateTeamMember: (id, data, otpCode) => api.put(`/cms/team/${id}`, data, { headers: { 'X-OTP-Code': otpCode } }),
+    deleteTeamMember: (id, otpCode) => api.delete(`/cms/team/${id}`, { headers: { 'X-OTP-Code': otpCode } }),
+
+    // Testimonials
+    listTestimonials: () => api.get('/cms/testimonials'),
+    createTestimonial: (data, otpCode) => api.post('/cms/testimonials', data, { headers: { 'X-OTP-Code': otpCode } }),
+    updateTestimonial: (id, data, otpCode) => api.put(`/cms/testimonials/${id}`, data, { headers: { 'X-OTP-Code': otpCode } }),
+    deleteTestimonial: (id, otpCode) => api.delete(`/cms/testimonials/${id}`, { headers: { 'X-OTP-Code': otpCode } }),
 };
 
 export default api;

@@ -1,5 +1,6 @@
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
+import { OtpProvider } from "@/components/OtpProvider";
 
 export const metadata = {
   title: "Trivastu Realty | Admin Dashboard",
@@ -10,7 +11,11 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <OtpProvider>
+            {children}
+          </OtpProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -14,7 +14,14 @@ const navItems = [
         section: 'Management', items: [
             { href: '/dashboard/leads', icon: '🎯', label: 'Leads' },
             { href: '/dashboard/agents', icon: '👥', label: 'Agents' },
-            { href: '/dashboard/properties', icon: '🏠', label: 'Properties' },
+            { href: '/dashboard/properties', icon: '🏠', label: 'Properties & Plots' },
+        ]
+    },
+    {
+        section: 'Website Content', items: [
+            { href: '/dashboard/projects', icon: '🏗️', label: 'Projects Showcase' },
+            { href: '/dashboard/team', icon: '👷', label: 'Contractors/Team' },
+            { href: '/dashboard/testimonials', icon: '⭐', label: 'Testimonials' },
         ]
     },
     {

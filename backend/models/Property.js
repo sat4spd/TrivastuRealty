@@ -15,6 +15,10 @@ const propertySchema = new mongoose.Schema({
     // Commission
     agentCommissionRate: { type: Number, default: 2.0 }, // Percentage like 2% or 5%
 
+    // Website CMS Additions
+    pricePerSqft: { type: String, default: '' }, // e.g. "₹1,150/sq.ft"
+    highlights: [{ type: String }], // e.g. ["Corner Plot", "East Facing"]
+
     bedrooms: { type: Number, default: 0 },
     amenities: [{ type: String }],
     images: [{ type: String }],   // S3 keys

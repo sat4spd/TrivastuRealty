@@ -60,34 +60,45 @@ export default function PropertiesPage() {
         finally { setLoading(false); }
     };
 
+    const { requestCmsOtp } = require('@/components/OtpProvider').useOtp();
+
     const handleApprove = async (id, status) => {
         try {
-            await propertiesAPI.approve(id, status);
+            const otpCode = await requestCmsOtp();
+            await propertiesAPI.approve(id, status, otpCode);
             loadProperties();
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            if (err !== 'OTP verification cancelled') console.error(err);
+        }
     };
 
     const handleDelete = async (id) => {
         if (!confirm('Delete this property?')) return;
         try {
-            await propertiesAPI.delete(id);
+            const otpCode = await requestCmsOtp();
+            await propertiesAPI.delete(id, otpCode);
             loadProperties();
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            if (err !== 'OTP verification cancelled') console.error(err);
+        }
     };
 
     const handleAdd = async (e) => {
         e.preventDefault();
         try {
+            const otpCode = await requestCmsOtp();
             const formData = new FormData();
             Object.keys(form).forEach(k => formData.append(k, form[k]));
             images.forEach(img => formData.append('images', img));
-            await propertiesAPI.create(formData);
+            await propertiesAPI.create(formData, otpCode);
             setShowModal(false);
             setForm({ title: '', type: 'apartment', price: '', location: '', area: '', unit: 'sqft', agentCommissionRate: 2.0, bedrooms: '', description: '', projectName: '' });
             setImages([]);
             setPreviews([]);
             loadProperties();
-        } catch (err) { console.error(err); }
+        } catch (err) {
+            if (err !== 'OTP verification cancelled') console.error(err);
+        }
     };
 
     const typeIcons = { apartment: '🏢', villa: '🏡', plot: '🌳', commercial: '🏪' };
