@@ -50,8 +50,14 @@ const userSchema = new mongoose.Schema({
 userSchema.index({ role: 1 });
 userSchema.index({ locationPreference: 1, budget: 1 });
 
-// Auto-trim conversation history to last 50 messages before save
+// Auto-trim conversation history to last 50 messages before save and force Mixed state saving
 userSchema.pre('save', function (next) {
+    if (this.isModified('conversationState')) {
+        this.markModified('conversationState.data');
+    } else if (this.conversationState && this.conversationState.data) {
+        this.markModified('conversationState.data');
+    }
+
     if (this.conversationHistory && this.conversationHistory.length > 50) {
         this.conversationHistory = this.conversationHistory.slice(-50);
     }

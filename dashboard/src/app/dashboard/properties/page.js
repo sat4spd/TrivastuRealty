@@ -14,7 +14,7 @@ export default function PropertiesPage() {
     const [properties, setProperties] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
-    const [showModal, setShowModal] = useState(false);
+    const [editingId, setEditingId] = useState(null);
     const [form, setForm] = useState({
         title: '', type: 'apartment', price: '', location: '', area: '', unit: 'sqft', agentCommissionRate: 2.0, bedrooms: '', description: '', projectName: '',
     });
@@ -83,15 +83,47 @@ export default function PropertiesPage() {
         }
     };
 
-    const handleAdd = async (e) => {
+    const handleEditForm = (prop) => {
+        setEditingId(prop._id);
+        setForm({
+            title: prop.title || '',
+            type: prop.type || 'apartment',
+            price: prop.price || '',
+            location: prop.location || '',
+            area: prop.area || '',
+            unit: prop.unit || 'sqft',
+            agentCommissionRate: prop.agentCommissionRate || 2.0,
+            bedrooms: prop.bedrooms || '',
+            description: prop.description || '',
+            projectName: prop.projectName || ''
+        });
+
+        // Populate existing images as previews if possible
+        if (prop.images && prop.images.length > 0) {
+            setPreviews(prop.images.map(img => ({ name: 'existing', type: 'image', url: img.startsWith('http') ? img : `https://your-bucket-name.s3.amazonaws.com/${img}` }))); // Fallback visual
+        } else {
+            setPreviews([]);
+        }
+        setImages([]);
+        setShowModal(true);
+    };
+
+    const handleSave = async (e) => {
         e.preventDefault();
         try {
             const otpCode = await requestCmsOtp();
             const formData = new FormData();
             Object.keys(form).forEach(k => formData.append(k, form[k]));
             images.forEach(img => formData.append('images', img));
-            await propertiesAPI.create(formData, otpCode);
+
+            if (editingId) {
+                await propertiesAPI.update(editingId, formData, otpCode);
+            } else {
+                await propertiesAPI.create(formData, otpCode);
+            }
+
             setShowModal(false);
+            setEditingId(null);
             setForm({ title: '', type: 'apartment', price: '', location: '', area: '', unit: 'sqft', agentCommissionRate: 2.0, bedrooms: '', description: '', projectName: '' });
             setImages([]);
             setPreviews([]);
@@ -112,7 +144,13 @@ export default function PropertiesPage() {
                     <h2>Property Management</h2>
                     <p>{properties.length} properties</p>
                 </div>
-                <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Add Property</button>
+                <button className="btn btn-primary" onClick={() => {
+                    setEditingId(null);
+                    setForm({ title: '', type: 'apartment', price: '', location: '', area: '', unit: 'sqft', agentCommissionRate: 2.0, bedrooms: '', description: '', projectName: '' });
+                    setImages([]);
+                    setPreviews([]);
+                    setShowModal(true);
+                }}>+ Add Property</button>
             </div>
 
             <div className="tabs">
@@ -169,7 +207,8 @@ export default function PropertiesPage() {
                                     <button className="btn btn-danger btn-sm" onClick={() => handleApprove(prop._id, 'rejected')}>❌ Reject</button>
                                 </>
                             )}
-                            <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={() => handleDelete(prop._id)}>🗑️</button>
+                            <button className="btn btn-outline btn-sm" style={{ marginLeft: 'auto' }} onClick={() => handleEditForm(prop)}>✏️</button>
+                            <button className="btn btn-outline btn-sm" onClick={() => handleDelete(prop._id)}>🗑️</button>
                             <a href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/property/${prop._id}`}
                                 target="_blank" rel="noopener noreferrer"
                                 className="btn btn-outline btn-sm" title="Public Page">🔗</a>
@@ -182,10 +221,10 @@ export default function PropertiesPage() {
                 <div className="modal-overlay" onClick={() => setShowModal(false)}>
                     <div className="modal" onClick={(e) => e.stopPropagation()}>
                         <div className="modal-header">
-                            <h3>Add New Property</h3>
+                            <h3>{editingId ? 'Edit Property' : 'Add New Property'}</h3>
                             <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
                         </div>
-                        <form onSubmit={handleAdd}>
+                        <form onSubmit={handleSave}>
                             <div className="modal-body">
                                 <div className="form-group">
                                     <label className="form-label">Title</label>
@@ -302,7 +341,7 @@ export default function PropertiesPage() {
                             </div>
                             <div className="modal-footer">
                                 <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Cancel</button>
-                                <button type="submit" className="btn btn-primary">Add Property</button>
+                                <button type="submit" className="btn btn-primary">{editingId ? 'Save Changes' : 'Add Property'}</button>
                             </div>
                         </form>
                     </div>
