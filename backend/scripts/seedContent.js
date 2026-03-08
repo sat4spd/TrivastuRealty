@@ -1,6 +1,7 @@
 /**
  * Content Seeding Script for Trivastu CMS
  * Seeds: Testimonials, Construction Projects, Services/Packages, Plot Listings, Business Info
+ * Use --force flag to replace existing data: node scripts/seedContent.js --force
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
@@ -9,6 +10,8 @@ const Project = require('../models/Project');
 const Service = require('../models/Service');
 const Property = require('../models/Property');
 const BusinessInfo = require('../models/BusinessInfo');
+
+const FORCE = process.argv.includes('--force');
 
 const TESTIMONIALS = [
     {
@@ -81,6 +84,27 @@ const TESTIMONIALS = [
         rating: 5,
         isPublished: true,
     },
+    {
+        authorName: 'Neha Kumari',
+        authorRole: 'Duplex Construction — Morabadi',
+        content: 'We built our 4BHK duplex through Trivastu in Morabadi. The architect was exceptional — incorporated all our Vastu requirements without compromising on modern design. The total cost stayed within 5% of the original estimate which is remarkable for a project this size.',
+        rating: 5,
+        isPublished: true,
+    },
+    {
+        authorName: 'Sanjay Mahto',
+        authorRole: 'Farmhouse — Bundu',
+        content: 'My weekend farmhouse near Bundu was designed and built by Trivastu. They suggested sustainable features like solar panels and rainwater harvesting that I hadn\'t even considered. The stone and wood exteriors blend perfectly with the natural surroundings. A true retreat.',
+        rating: 5,
+        isPublished: true,
+    },
+    {
+        authorName: 'Pooja Agarwal',
+        authorRole: 'Plot Purchase — Tupudana',
+        content: 'As a woman buying property independently, I needed a team I could truly trust. Trivastu\'s legal team walked me through every document, explained the land classification clearly, and even accompanied me to the sub-registrar office. Exceptional service and genuine people.',
+        rating: 5,
+        isPublished: true,
+    },
 ];
 
 const PROJECTS = [
@@ -90,8 +114,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Completed',
         description: '3BHK luxury villa with contemporary architecture, premium interiors, and landscaped garden. Built on 2400 sq.ft plot with modern amenities.',
-        image: '/images/project-villa.png',
-        images: ['/images/project-villa.png'],
+        image: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&q=80&w=800',
+        images: ['https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&q=80&w=800'],
         isPublished: true,
     },
     {
@@ -100,8 +124,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Ongoing',
         description: 'Premium residential township spread across 50 acres with modern amenities, green spaces, community center, and 24x7 security.',
-        image: '/images/project-apartments.png',
-        images: ['/images/project-apartments.png'],
+        image: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&q=80&w=800',
+        images: ['https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&q=80&w=800'],
         isPublished: true,
     },
     {
@@ -110,8 +134,8 @@ const PROJECTS = [
         type: 'Commercial',
         status: 'Completed',
         description: 'Multi-story commercial complex with 15,000 sq.ft of retail and office space. Prime location with excellent connectivity.',
-        image: '/images/commercial-building.png',
-        images: ['/images/commercial-building.png'],
+        image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=800',
+        images: ['https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=800'],
         isPublished: true,
     },
     {
@@ -120,8 +144,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Completed',
         description: '4BHK duplex with rooftop garden, modular kitchen, and smart home features. Built on 3200 sq.ft with premium Italian marble flooring.',
-        image: '/images/project-duplex.png',
-        images: ['/images/project-duplex.png'],
+        image: 'https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&q=80&w=800',
+        images: ['https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&q=80&w=800'],
         isPublished: true,
     },
     {
@@ -130,8 +154,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Ongoing',
         description: 'Sprawling farmhouse on 5000 sq.ft with landscaped gardens, sustainable design, rainwater harvesting, and solar panels.',
-        image: '/images/project-farmhouse.png',
-        images: ['/images/project-farmhouse.png'],
+        image: 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&q=80&w=800',
+        images: ['https://images.unsplash.com/photo-1564013799919-ab600027ffc6?auto=format&fit=crop&q=80&w=800'],
         isPublished: true,
     },
     {
@@ -140,8 +164,8 @@ const PROJECTS = [
         type: 'Commercial',
         status: 'Upcoming',
         description: 'Modern office complex with 8,000 sq.ft of co-working spaces, premium amenities, and high-speed fiber connectivity.',
-        image: '/images/project-office.png',
-        images: ['/images/project-office.png'],
+        image: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=800',
+        images: ['https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80&w=800'],
         isPublished: true,
     },
 ];
@@ -189,6 +213,7 @@ const PLOTS = [
         unit: 'decimals',
         description: 'East-facing corner plot in prime Nagari area. Well-connected to Ranchi city via NH33. Ideal for residential construction. Clear title, ready for registration.',
         highlights: ['Corner Plot', 'East Facing', 'NH33 Access', 'Clear Title'],
+        images: ['https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=800'],
         landClassification: 'general',
         website: 'plots',
         status: 'approved',
@@ -204,6 +229,7 @@ const PLOTS = [
         unit: 'decimals',
         description: 'Plot in upcoming gated community near Tupudana. 24x7 security, paved roads, and proximity to Ring Road. Perfect for family home.',
         highlights: ['Gated Community', 'Near Ring Road', 'Paved Roads', 'Water Supply'],
+        images: ['https://images.unsplash.com/photo-1628624747186-a941c476b7ef?auto=format&fit=crop&q=80&w=800'],
         landClassification: 'general',
         website: 'plots',
         status: 'approved',
@@ -219,6 +245,7 @@ const PLOTS = [
         unit: 'decimals',
         description: 'Affordable residential plot in fast-developing Lodhma area. Near proposed metro route. All utilities available. Ideal for first-time buyers.',
         highlights: ['Affordable', 'Near Metro Route', 'Developing Area', 'All Utilities'],
+        images: ['https://images.unsplash.com/photo-1625602812206-5ec545ca1231?auto=format&fit=crop&q=80&w=800'],
         landClassification: 'general',
         website: 'plots',
         status: 'approved',
@@ -234,6 +261,7 @@ const PLOTS = [
         unit: 'sqft',
         description: 'Prime commercial plot near Hatia railway station. High footfall area, ideal for showroom, retail store, or office space. Road-facing with parking.',
         highlights: ['Near Station', 'Road Facing', 'High Footfall', 'Parking Space'],
+        images: ['https://images.unsplash.com/photo-1577415124269-fc1140a69e91?auto=format&fit=crop&q=80&w=800'],
         landClassification: 'general',
         website: 'plots',
         status: 'approved',
@@ -249,6 +277,7 @@ const PLOTS = [
         unit: 'sqft',
         description: 'Premium commercial plot in Bistupur business district. Suitable for offices, clinics, or retail. Near XLRI and main market. Excellent ROI potential.',
         highlights: ['Business District', 'Near XLRI', 'High ROI', 'Clear Title'],
+        images: ['https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&q=80&w=800'],
         landClassification: 'general',
         website: 'plots',
         status: 'approved',
@@ -264,6 +293,7 @@ const PLOTS = [
         unit: 'acres',
         description: 'Fertile agricultural land near Namkum with natural water source. Ideal for organic farming, nursery, or future residential development.',
         highlights: ['Water Source', 'Fertile Soil', 'Future Development', 'Road Access'],
+        images: ['https://images.unsplash.com/photo-1500076656116-558758c991c1?auto=format&fit=crop&q=80&w=800'],
         landClassification: 'cnt',
         website: 'plots',
         status: 'approved',
@@ -278,6 +308,7 @@ const PLOTS = [
         unit: 'acres',
         description: 'Large agricultural tract near Bundu. Suitable for mango orchards, poultry farming, or resort development. SC/ST land category, buyer must verify eligibility.',
         highlights: ['3 Acres', 'Orchard Potential', 'Resort Potential', 'SC/ST Land'],
+        images: ['https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&q=80&w=800'],
         landClassification: 'sc-st',
         website: 'plots',
         status: 'approved',
@@ -292,6 +323,22 @@ const PLOTS = [
         unit: 'acres',
         description: 'Scenic farmland near Ormanjhi with hillside views. Near Patratu Dam road. Suitable for weekend farm, homestay, or organic cultivation.',
         highlights: ['Hill Views', 'Near Patratu Road', 'Scenic Location', 'General Land'],
+        images: ['https://images.unsplash.com/photo-1560493676-04071c5f467b?auto=format&fit=crop&q=80&w=800'],
+        landClassification: 'general',
+        website: 'plots',
+        status: 'approved',
+        isAvailable: true,
+    },
+    {
+        title: 'Premium Residential Plot - Tupudana',
+        type: 'plot',
+        price: 390000,
+        location: 'Satranji Bazaar, Tupudana',
+        area: 1.78,
+        unit: 'acres',
+        description: 'Well-located residential plot near Satranji Bazaar in Tupudana. Excellent connectivity, surrounded by developing neighborhoods. Perfect for long-term investment.',
+        highlights: ['Near Market', 'Road Frontage', 'Developing Area', 'Clear Title'],
+        images: ['https://images.unsplash.com/photo-1595880500386-4b33823b29cd?auto=format&fit=crop&q=80&w=800'],
         landClassification: 'general',
         website: 'plots',
         status: 'approved',
@@ -316,10 +363,12 @@ async function seed() {
     try {
         await mongoose.connect(process.env.MONGODB_URI);
         console.log('✅ Connected to MongoDB');
+        console.log(FORCE ? '⚡ FORCE mode: replacing existing data\n' : '📝 Normal mode: seeding only if empty\n');
 
         // Seed testimonials
         const existingTestimonials = await Testimonial.countDocuments();
-        if (existingTestimonials === 0) {
+        if (FORCE || existingTestimonials === 0) {
+            if (FORCE) await Testimonial.deleteMany({});
             await Testimonial.insertMany(TESTIMONIALS);
             console.log(`✅ Seeded ${TESTIMONIALS.length} testimonials`);
         } else {
@@ -328,7 +377,8 @@ async function seed() {
 
         // Seed projects
         const existingProjects = await Project.countDocuments();
-        if (existingProjects === 0) {
+        if (FORCE || existingProjects === 0) {
+            if (FORCE) await Project.deleteMany({});
             await Project.insertMany(PROJECTS);
             console.log(`✅ Seeded ${PROJECTS.length} construction projects`);
         } else {
@@ -337,22 +387,21 @@ async function seed() {
 
         // Seed services
         const existingServices = await Service.countDocuments();
-        if (existingServices === 0) {
+        if (FORCE || existingServices === 0) {
+            if (FORCE) await Service.deleteMany({});
             await Service.insertMany(SERVICES);
             console.log(`✅ Seeded ${SERVICES.length} service packages`);
         } else {
             console.log(`⏩ Services already exist (${existingServices}), skipping`);
         }
 
-        // Seed plots (only if no plots exist with website='plots')
+        // Seed plots
         const existingPlots = await Property.countDocuments({ website: 'plots' });
-        if (existingPlots === 0) {
-            // We need an addedBy user; use the first admin user if available
+        if (FORCE || existingPlots === 0) {
             const User = require('../models/User');
             let adminUser = await User.findOne({ role: 'admin' });
-            if (!adminUser) {
-                adminUser = await User.findOne(); // Just grab any user
-            }
+            if (!adminUser) adminUser = await User.findOne();
+            if (FORCE) await Property.deleteMany({ website: 'plots' });
             const plotsWithUser = PLOTS.map(p => ({
                 ...p,
                 addedBy: adminUser ? adminUser._id : new mongoose.Types.ObjectId(),
