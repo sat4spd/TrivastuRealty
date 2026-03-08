@@ -53,6 +53,34 @@ const TESTIMONIALS = [
         rating: 5,
         isPublished: true,
     },
+    {
+        authorName: 'Anita Singh',
+        authorRole: 'Interior Design — Kanke',
+        content: 'Trivastu redesigned our entire living space in Kanke. The interior team understood our Vastu preferences perfectly and created a modern yet traditional ambiance. The modular kitchen and bathroom fittings are top-notch. Three months in and everything still looks brand new.',
+        rating: 5,
+        isPublished: true,
+    },
+    {
+        authorName: 'Vikram Mahato',
+        authorRole: '2BHK Construction — Namkum',
+        content: 'Being a first-time builder, I was nervous about the entire process. Trivastu made it incredibly simple — from plan approval to handing over the keys, every step was transparent. The 2BHK cost me exactly what they quoted. No hidden charges at all.',
+        rating: 5,
+        isPublished: true,
+    },
+    {
+        authorName: 'Kavita Dey',
+        authorRole: 'Plot Investment — Ormanjhi',
+        content: 'Invested in two plots near Ormanjhi on Trivastu\'s recommendation. Their market analysis was spot on — the area has seen 30% appreciation in just one year. Their legal team handled all the paperwork flawlessly. Will definitely invest more through them.',
+        rating: 5,
+        isPublished: true,
+    },
+    {
+        authorName: 'Ravi Prasad',
+        authorRole: 'Commercial Build — Lalpur',
+        content: 'Our showroom construction in Lalpur was completed 10 days ahead of schedule with premium quality. Trivastu\'s project manager gave us daily updates with photos. The structural engineer was brilliant — our building passed all municipal inspections on the first attempt.',
+        rating: 5,
+        isPublished: true,
+    },
 ];
 
 const PROJECTS = [
@@ -92,8 +120,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Completed',
         description: '4BHK duplex with rooftop garden, modular kitchen, and smart home features. Built on 3200 sq.ft with premium Italian marble flooring.',
-        image: '/images/project-villa.png',
-        images: ['/images/project-villa.png'],
+        image: '/images/project-duplex.png',
+        images: ['/images/project-duplex.png'],
         isPublished: true,
     },
     {
@@ -102,8 +130,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Ongoing',
         description: 'Sprawling farmhouse on 5000 sq.ft with landscaped gardens, sustainable design, rainwater harvesting, and solar panels.',
-        image: '/images/construction-site.png',
-        images: ['/images/construction-site.png'],
+        image: '/images/project-farmhouse.png',
+        images: ['/images/project-farmhouse.png'],
         isPublished: true,
     },
     {
@@ -112,8 +140,8 @@ const PROJECTS = [
         type: 'Commercial',
         status: 'Upcoming',
         description: 'Modern office complex with 8,000 sq.ft of co-working spaces, premium amenities, and high-speed fiber connectivity.',
-        image: '/images/commercial-building.png',
-        images: ['/images/commercial-building.png'],
+        image: '/images/project-office.png',
+        images: ['/images/project-office.png'],
         isPublished: true,
     },
 ];
