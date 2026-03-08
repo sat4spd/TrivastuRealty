@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { propertiesAPI } from '@/lib/api';
+import api from '@/lib/api';
 
 export default function PlotListingsPage() {
     const [plots, setPlots] = useState([]);
@@ -19,11 +20,17 @@ export default function PlotListingsPage() {
     useEffect(() => { loadData(); }, []);
     const loadData = async () => {
         try {
-            const res = await propertiesAPI.list({ status: 'approved' });
-            // Filter to only show plots/land
-            const plotTypes = ['plot', 'land', 'commercial'];
-            setPlots((res.data || []).filter(p => p.website === 'plots' || plotTypes.includes(p.type)));
-        } catch (e) { console.error(e); }
+            // Use CMS endpoint which is public and returns approved properties
+            const res = await api.get('/cms/properties', { params: { website: 'plots' } });
+            setPlots(res.data || []);
+        } catch (e) {
+            // Fallback to propertiesAPI if CMS endpoint fails
+            try {
+                const res2 = await propertiesAPI.list({ status: 'approved' });
+                const plotTypes = ['plot', 'land', 'commercial'];
+                setPlots((res2.data || []).filter(p => p.website === 'plots' || plotTypes.includes(p.type)));
+            } catch (e2) { console.error(e2); }
+        }
         finally { setLoading(false); }
     };
 
