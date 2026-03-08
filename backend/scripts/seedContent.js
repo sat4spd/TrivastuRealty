@@ -335,14 +335,13 @@ async function seed() {
             console.log(`⏩ Plot listings already exist (${existingPlots}), skipping`);
         }
 
-        // Seed business info
-        const existingInfo = await BusinessInfo.findOne({ key: 'main' });
-        if (!existingInfo) {
-            await BusinessInfo.create(BUSINESS_INFO);
-            console.log('✅ Seeded business info');
-        } else {
-            console.log('⏩ Business info already exists, skipping');
-        }
+        // Seed/update business info (always upsert)
+        await BusinessInfo.findOneAndUpdate(
+            { key: 'main' },
+            BUSINESS_INFO,
+            { upsert: true, new: true }
+        );
+        console.log('✅ Business info updated');
 
         console.log('\n🎉 Content seeding complete!');
     } catch (error) {
