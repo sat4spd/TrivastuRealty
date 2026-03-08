@@ -108,6 +108,22 @@ export const cmsAPI = {
     createTestimonial: (data, otpCode) => api.post('/cms/testimonials', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
     updateTestimonial: (id, data, otpCode) => api.put(`/cms/testimonials/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
     deleteTestimonial: (id, otpCode) => api.delete(`/cms/testimonials/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+
+    // Services / Packages
+    listServices: (website) => api.get('/cms/services', { params: { website } }),
+    createService: (data, otpCode) => api.post('/cms/services', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateService: (id, data, otpCode) => api.put(`/cms/services/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    deleteService: (id, otpCode) => api.delete(`/cms/services/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+
+    // Business Info
+    getBusinessInfo: () => api.get('/cms/business-info'),
+    updateBusinessInfo: (data, otpCode) => api.put('/cms/business-info', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+
+    // Realty Projects (Construction)
+    listRealtyProjects: () => api.get('/cms/realty-projects'),
+    createRealtyProject: (data, otpCode) => api.post('/cms/realty-projects', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateRealtyProject: (id, data, otpCode) => api.put(`/cms/realty-projects/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    deleteRealtyProject: (id, otpCode) => api.delete(`/cms/realty-projects/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 };
 
 export default api;

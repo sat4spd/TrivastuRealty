@@ -5,6 +5,8 @@ const Project = require('../models/Project');
 const TeamMember = require('../models/TeamMember');
 const Testimonial = require('../models/Testimonial');
 const Property = require('../models/Property');
+const Service = require('../models/Service');
+const BusinessInfo = require('../models/BusinessInfo');
 const { auth } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
 const { requireOtpForCms } = require('../middleware/otpVerify');
@@ -160,16 +162,98 @@ router.delete('/testimonials/:id', async (req, res) => {
 // ── PUBLIC PROPERTIES (For Plots & Realty Websites) ──
 router.get('/properties', async (req, res) => {
     try {
-        // Only return available, approved properties with public-facing data
-        let properties = await Property.find({ status: 'approved', isAvailable: true })
-            .select('title description type price location area unit pricePerSqft highlights images bedrooms amenities status isAvailable')
+        const filter = { status: 'approved', isAvailable: true };
+        if (req.query.website) filter.website = req.query.website;
+        if (req.query.type) filter.type = req.query.type;
+        let properties = await Property.find(filter)
+            .select('title description type price location area unit pricePerSqft highlights images bedrooms amenities status isAvailable landClassification website')
             .sort({ createdAt: -1 });
-
-        // The images inside these properties need to be signed
         properties = await appendSignedUrls(properties);
-
         res.json(properties);
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── SERVICES / PACKAGES ──
+router.get('/services', async (req, res) => {
+    try {
+        const filter = { isPublished: true };
+        if (req.query.website) filter.website = req.query.website;
+        const services = await Service.find(filter).sort({ order: 1 });
+        res.json(services);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/services', upload.any(), async (req, res) => {
+    try {
+        const data = await processUploads(req, { ...req.body });
+        const service = await Service.create(data);
+        res.status(201).json(service);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.put('/services/:id', upload.any(), async (req, res) => {
+    try {
+        const data = await processUploads(req, { ...req.body });
+        const service = await Service.findByIdAndUpdate(req.params.id, data, { new: true });
+        res.json(service);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/services/:id', async (req, res) => {
+    try {
+        await Service.findByIdAndDelete(req.params.id);
+        res.json({ success: true });
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── BUSINESS INFO (Singleton) ──
+router.get('/business-info', async (req, res) => {
+    try {
+        let info = await BusinessInfo.findOne({ key: 'main' });
+        if (!info) info = await BusinessInfo.create({ key: 'main' });
+        res.json(info);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/business-info', upload.any(), async (req, res) => {
+    try {
+        const data = await processUploads(req, { ...req.body });
+        let info = await BusinessInfo.findOneAndUpdate({ key: 'main' }, data, { new: true, upsert: true });
+        res.json(info);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// ── REALTY PROJECTS (Construction projects for realty site) ──
+router.get('/realty-projects', async (req, res) => {
+    try {
+        let projects = await Project.find({ isPublished: true }).sort({ createdAt: -1 });
+        projects = await appendSignedUrls(projects);
+        res.json(projects);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/realty-projects', upload.any(), async (req, res) => {
+    try {
+        const data = await processUploads(req, { ...req.body });
+        data.website = 'realty';
+        const project = await Project.create(data);
+        res.status(201).json(project);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.put('/realty-projects/:id', upload.any(), async (req, res) => {
+    try {
+        const data = await processUploads(req, { ...req.body });
+        const project = await Project.findByIdAndUpdate(req.params.id, data, { new: true });
+        res.json(project);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+router.delete('/realty-projects/:id', async (req, res) => {
+    try {
+        await Project.findByIdAndDelete(req.params.id);
+        res.json({ success: true });
+    } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 module.exports = router;
