@@ -20,16 +20,22 @@ export default function PlotListingsPage() {
     useEffect(() => { loadData(); }, []);
     const loadData = async () => {
         try {
-            // Use CMS endpoint which is public and returns approved properties
+            // Primary: Use CMS endpoint which is public and returns approved properties
             const res = await api.get('/cms/properties', { params: { website: 'plots' } });
-            setPlots(res.data || []);
+            const data = Array.isArray(res.data) ? res.data : (res.data?.properties || res.data || []);
+            console.log('[PlotListings] CMS API returned', data.length, 'plots');
+            setPlots(data);
         } catch (e) {
-            // Fallback to propertiesAPI if CMS endpoint fails
+            console.warn('[PlotListings] CMS endpoint failed:', e.message);
+            // Fallback to auth-protected properties API
             try {
                 const res2 = await propertiesAPI.list({ status: 'approved' });
+                const allProps = Array.isArray(res2.data) ? res2.data : (res2.data?.properties || []);
                 const plotTypes = ['plot', 'land', 'commercial'];
-                setPlots((res2.data || []).filter(p => p.website === 'plots' || plotTypes.includes(p.type)));
-            } catch (e2) { console.error(e2); }
+                const filtered = allProps.filter(p => p.website === 'plots' || plotTypes.includes(p.type));
+                console.log('[PlotListings] Fallback API returned', filtered.length, 'plots');
+                setPlots(filtered);
+            } catch (e2) { console.error('[PlotListings] Both APIs failed:', e2.message); }
         }
         finally { setLoading(false); }
     };
