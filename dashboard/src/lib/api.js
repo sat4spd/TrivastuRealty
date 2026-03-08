@@ -49,7 +49,7 @@ export const propertiesAPI = {
     list: (params) => api.get('/properties', { params }),
     get: (id) => api.get(`/properties/${id}`),
     create: (formData, otpCode) => api.post('/properties', formData, {
-        headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) },
+        headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) },
     }),
     update: (id, data, otpCode) => api.put(`/properties/${id}`, data, { headers: { 'X-OTP-Code': otpCode } }),
     approve: (id, status, otpCode) => api.put(`/properties/${id}/approve`, { status }, { headers: { 'X-OTP-Code': otpCode } }),
@@ -84,45 +84,43 @@ export const groupsAPI = {
 };
 
 export const documentsAPI = {
-    upload: (formData) => api.post('/documents/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+    upload: (formData) => api.post('/documents/upload', formData),
     getUrl: (key) => api.get(`/documents/${key}/url`),
 };
 
 export const cmsAPI = {
     // Projects
     listProjects: () => api.get('/cms/projects'),
-    createProject: (data, otpCode) => api.post('/cms/projects', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
-    updateProject: (id, data, otpCode) => api.put(`/cms/projects/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    createProject: (data, otpCode) => api.post('/cms/projects', data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateProject: (id, data, otpCode) => api.put(`/cms/projects/${id}`, data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
     deleteProject: (id, otpCode) => api.delete(`/cms/projects/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 
     // Team
     listTeam: () => api.get('/cms/team'),
-    createTeamMember: (data, otpCode) => api.post('/cms/team', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
-    updateTeamMember: (id, data, otpCode) => api.put(`/cms/team/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    createTeamMember: (data, otpCode) => api.post('/cms/team', data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateTeamMember: (id, data, otpCode) => api.put(`/cms/team/${id}`, data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
     deleteTeamMember: (id, otpCode) => api.delete(`/cms/team/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 
     // Testimonials
     listTestimonials: () => api.get('/cms/testimonials'),
-    createTestimonial: (data, otpCode) => api.post('/cms/testimonials', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
-    updateTestimonial: (id, data, otpCode) => api.put(`/cms/testimonials/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    createTestimonial: (data, otpCode) => api.post('/cms/testimonials', data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateTestimonial: (id, data, otpCode) => api.put(`/cms/testimonials/${id}`, data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
     deleteTestimonial: (id, otpCode) => api.delete(`/cms/testimonials/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 
     // Services / Packages
     listServices: (website) => api.get('/cms/services', { params: { website } }),
-    createService: (data, otpCode) => api.post('/cms/services', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
-    updateService: (id, data, otpCode) => api.put(`/cms/services/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    createService: (data, otpCode) => api.post('/cms/services', data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateService: (id, data, otpCode) => api.put(`/cms/services/${id}`, data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
     deleteService: (id, otpCode) => api.delete(`/cms/services/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 
     // Business Info
     getBusinessInfo: () => api.get('/cms/business-info'),
-    updateBusinessInfo: (data, otpCode) => api.put('/cms/business-info', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateBusinessInfo: (data, otpCode) => api.put('/cms/business-info', data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 
     // Realty Projects (Construction)
     listRealtyProjects: () => api.get('/cms/realty-projects'),
-    createRealtyProject: (data, otpCode) => api.post('/cms/realty-projects', data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
-    updateRealtyProject: (id, data, otpCode) => api.put(`/cms/realty-projects/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data', ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    createRealtyProject: (data, otpCode) => api.post('/cms/realty-projects', data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
+    updateRealtyProject: (id, data, otpCode) => api.put(`/cms/realty-projects/${id}`, data, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
     deleteRealtyProject: (id, otpCode) => api.delete(`/cms/realty-projects/${id}`, { headers: { ...(otpCode && { 'X-OTP-Code': otpCode }) } }),
 };
 
