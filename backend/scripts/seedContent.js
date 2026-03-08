@@ -62,6 +62,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Completed',
         description: '3BHK luxury villa with contemporary architecture, premium interiors, and landscaped garden. Built on 2400 sq.ft plot with modern amenities.',
+        image: '/images/project-villa.png',
+        images: ['/images/project-villa.png'],
         isPublished: true,
     },
     {
@@ -70,6 +72,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Ongoing',
         description: 'Premium residential township spread across 50 acres with modern amenities, green spaces, community center, and 24x7 security.',
+        image: '/images/project-apartments.png',
+        images: ['/images/project-apartments.png'],
         isPublished: true,
     },
     {
@@ -78,6 +82,8 @@ const PROJECTS = [
         type: 'Commercial',
         status: 'Completed',
         description: 'Multi-story commercial complex with 15,000 sq.ft of retail and office space. Prime location with excellent connectivity.',
+        image: '/images/commercial-building.png',
+        images: ['/images/commercial-building.png'],
         isPublished: true,
     },
     {
@@ -86,6 +92,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Completed',
         description: '4BHK duplex with rooftop garden, modular kitchen, and smart home features. Built on 3200 sq.ft with premium Italian marble flooring.',
+        image: '/images/project-villa.png',
+        images: ['/images/project-villa.png'],
         isPublished: true,
     },
     {
@@ -94,6 +102,8 @@ const PROJECTS = [
         type: 'Residential',
         status: 'Ongoing',
         description: 'Sprawling farmhouse on 5000 sq.ft with landscaped gardens, sustainable design, rainwater harvesting, and solar panels.',
+        image: '/images/construction-site.png',
+        images: ['/images/construction-site.png'],
         isPublished: true,
     },
     {
@@ -102,6 +112,8 @@ const PROJECTS = [
         type: 'Commercial',
         status: 'Upcoming',
         description: 'Modern office complex with 8,000 sq.ft of co-working spaces, premium amenities, and high-speed fiber connectivity.',
+        image: '/images/commercial-building.png',
+        images: ['/images/commercial-building.png'],
         isPublished: true,
     },
 ];
@@ -261,15 +273,15 @@ const PLOTS = [
 
 const BUSINESS_INFO = {
     key: 'main',
-    companyName: 'Trivastu Realty',
-    phone: '+918105180539',
-    altPhone: '+918092241100',
-    email: 'info@trivastu.com',
-    address: 'Ranchi, Jharkhand',
+    companyName: 'Trivastu Ventures',
+    phone: '+918655202633',
+    altPhone: '',
+    email: 'contact@trivastu.com',
+    address: 'Singhmore, Hatia, Ranchi - 834003',
     city: 'Ranchi',
     state: 'Jharkhand',
-    pincode: '834001',
-    whatsapp: '+918105180539',
+    pincode: '834003',
+    whatsapp: '+918655202633',
 };
 
 async function seed() {
