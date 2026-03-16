@@ -167,8 +167,16 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                                 if (matches) {
                                     const expectedParamsCount = Array.from(new Set(matches)).length;
                                     const bodyParams = [];
+                                    
+                                    // Robustly extract primitive string from contact.name (handles Excel Rich-Text Objects)
+                                    let rawName = contact.name || 'Customer';
+                                    if (typeof rawName === 'object') {
+                                        rawName = rawName.v || rawName.w || rawName.text || JSON.stringify(rawName);
+                                    }
+                                    const safeNameStr = String(rawName).trim();
+
                                     if (expectedParamsCount >= 1) {
-                                        bodyParams.push({ type: 'text', text: contact.name || 'Customer' });
+                                        bodyParams.push({ type: 'text', text: safeNameStr });
                                     }
                                     for (let i = 1; i < expectedParamsCount; i++) {
                                         bodyParams.push({ type: 'text', text: 'Trivastu Realty' });
