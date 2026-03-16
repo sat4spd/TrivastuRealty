@@ -5,6 +5,7 @@ const whatsappConfig = {
     token: process.env.WHATSAPP_TOKEN,
     verifyToken: process.env.WHATSAPP_VERIFY_TOKEN,
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    wabaId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID,
 };
 
 module.exports = whatsappConfig;

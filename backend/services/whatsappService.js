@@ -163,14 +163,25 @@ const downloadMedia = async (url) => {
 
 const getTemplates = async () => {
     try {
-        // 1. Get WABA ID using Phone Number ID
-        const phoneRes = await axios.get(
-            `https://graph.facebook.com/v22.0/${whatsappConfig.phoneNumberId}?fields=whatsapp_business_account_id`,
-            { headers: { Authorization: `Bearer ${whatsappConfig.token}` } }
-        );
-        const wabaId = phoneRes.data.whatsapp_business_account_id?.id;
+        let wabaId = whatsappConfig.wabaId;
+
+        if (!wabaId) {
+            // 1. Try to Get WABA ID using Phone Number ID (Often fails due to Admin token permission restrictions)
+            try {
+                const phoneRes = await axios.get(
+                    `https://graph.facebook.com/v22.0/${whatsappConfig.phoneNumberId}?fields=whatsapp_business_account_id`,
+                    { headers: { Authorization: `Bearer ${whatsappConfig.token}` } }
+                );
+                wabaId = phoneRes.data.whatsapp_business_account_id?.id;
+            } catch (err) {
+                logger.warn('Failed dynamic WABA ID lookup. Token may lack "whatsapp_business_management". Set WHATSAPP_BUSINESS_ACCOUNT_ID in .env');
+            }
+        }
         
-        if (!wabaId) throw new Error("Could not find WhatsApp Business Account ID");
+        if (!wabaId) {
+            logger.warn("No WABA ID configured. Cannot fetch templates.");
+            return []; // Prevent frontend crash
+        }
 
         // 2. Fetch templates for this WABA
         const templatesRes = await axios.get(
@@ -182,7 +193,7 @@ const getTemplates = async () => {
         return templatesRes.data.data.filter(t => t.status === 'APPROVED');
     } catch (error) {
         logger.error('Failed to fetch templates:', error.response?.data || error.message);
-        throw error;
+        return []; // Fallback to empty to prevent UI completely breaking
     }
 };
 
