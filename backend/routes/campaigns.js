@@ -160,53 +160,71 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                     if (messageType === 'template') {
                         const components = [];
 
-                            // 0. Header Image Component (required even for static images)
-                            const header = tmplDef ? tmplDef.components.find(c => c.type === 'HEADER') : null;
-                            if (header && header.format === 'IMAGE') {
-                                const headerHandle = header?.example?.header_handle?.[0];
-                                if (headerHandle) {
-                                    components.push({
-                                        type: 'header',
-                                        parameters: [{ type: 'image', image: { link: headerHandle } }]
-                                    });
+                        if (tmplDef) {
+                            // ── 0. HEADER Component ───────────────────────────────────
+                            // Meta requires header params even for static/example assets
+                            const header = tmplDef.components.find(c => c.type === 'HEADER');
+                            if (header) {
+                                const fmt = header.format; // IMAGE | VIDEO | DOCUMENT | TEXT
+                                if (fmt === 'IMAGE') {
+                                    const handle = header?.example?.header_handle?.[0];
+                                    if (handle) {
+                                        components.push({ type: 'header', parameters: [{ type: 'image', image: { link: handle } }] });
+                                    }
+                                } else if (fmt === 'VIDEO') {
+                                    const handle = header?.example?.header_handle?.[0];
+                                    if (handle) {
+                                        components.push({ type: 'header', parameters: [{ type: 'video', video: { link: handle } }] });
+                                    }
+                                } else if (fmt === 'DOCUMENT') {
+                                    const handle = header?.example?.header_handle?.[0];
+                                    if (handle) {
+                                        components.push({ type: 'header', parameters: [{ type: 'document', document: { link: handle } }] });
+                                    }
+                                } else if (fmt === 'TEXT') {
+                                    // Text headers may have variables like {{1}} or {{name}}
+                                    const headerVars = header.text?.match(/\{\{[^}]+\}\}/g);
+                                    if (headerVars && headerVars.length > 0) {
+                                        const headerParams = headerVars.map(() => ({ type: 'text', text: 'Trivastu Realty' }));
+                                        components.push({ type: 'header', parameters: headerParams });
+                                    }
+                                    // If TEXT header has no variables, no parameters needed — skip
                                 }
+                                // NONE/no format header → nothing to send
                             }
 
-                            // 1. Body Text Variables Component
-                            const body = tmplDef ? tmplDef.components.find(c => c.type === 'BODY') : null;
+                            // ── 1. BODY Component ─────────────────────────────────────
+                            const body = tmplDef.components.find(c => c.type === 'BODY');
                             if (body && body.text) {
                                 const matches = body.text.match(/\{\{[^}]+\}\}/g);
-                                if (matches) {
+                                if (matches && matches.length > 0) {
                                     const uniqueMatches = Array.from(new Set(matches));
-                                    const bodyParams = [];
                                     
-                                    // Robustly extract primitive string from contact.name (handles Excel Rich-Text Objects)
+                                    // Robustly extract a primitive string from contact.name
+                                    // (Excel xlsx sometimes returns rich-text objects instead of strings)
                                     let rawName = contact.name || 'Customer';
                                     if (typeof rawName === 'object') {
                                         rawName = rawName.v || rawName.w || rawName.text || JSON.stringify(rawName);
                                     }
-                                    const safeNameStr = String(rawName).trim();
+                                    const safeNameStr = String(rawName).trim() || 'Customer';
 
-                                    uniqueMatches.forEach((match, index) => {
+                                    const bodyParams = uniqueMatches.map((match, index) => {
                                         const varName = match.replace(/\{\{|\}\}/g, '').trim();
                                         const isNumeric = /^\d+$/.test(varName);
-                                        
                                         const param = { type: 'text' };
-                                        
-                                        // If named parameter (e.g. {{name}}), Meta requires "parameter_name"
-                                        if (!isNumeric) {
-                                            param.parameter_name = varName;
-                                        }
-
-                                        // Map the first variable to the contact's name, others to fallback
+                                        // Named variable → Meta requires parameter_name
+                                        if (!isNumeric) param.parameter_name = varName;
+                                        // First variable → contact name, rest → fallback
                                         param.text = (index === 0) ? safeNameStr : 'Trivastu Realty';
-                                        
-                                        bodyParams.push(param);
+                                        return param;
                                     });
 
                                     components.push({ type: 'body', parameters: bodyParams });
                                 }
+                                // If body has no variables → no body component needed (static text)
                             }
+                        }
+                        // If tmplDef couldn't be fetched → send with empty components (works for all-static templates)
                         // Send Official Meta Template
                         await whatsappService.sendTemplate(
                             contact.phone,
