@@ -165,7 +165,7 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                             if (body && body.text) {
                                 const matches = body.text.match(/\{\{[^}]+\}\}/g);
                                 if (matches) {
-                                    const expectedParamsCount = Array.from(new Set(matches)).length;
+                                    const uniqueMatches = Array.from(new Set(matches));
                                     const bodyParams = [];
                                     
                                     // Robustly extract primitive string from contact.name (handles Excel Rich-Text Objects)
@@ -175,12 +175,23 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                                     }
                                     const safeNameStr = String(rawName).trim();
 
-                                    if (expectedParamsCount >= 1) {
-                                        bodyParams.push({ type: 'text', text: safeNameStr });
-                                    }
-                                    for (let i = 1; i < expectedParamsCount; i++) {
-                                        bodyParams.push({ type: 'text', text: 'Trivastu Realty' });
-                                    }
+                                    uniqueMatches.forEach((match, index) => {
+                                        const varName = match.replace(/\{\{|\}\}/g, '').trim();
+                                        const isNumeric = /^\d+$/.test(varName);
+                                        
+                                        const param = { type: 'text' };
+                                        
+                                        // If named parameter (e.g. {{name}}), Meta requires "parameter_name"
+                                        if (!isNumeric) {
+                                            param.parameter_name = varName;
+                                        }
+
+                                        // Map the first variable to the contact's name, others to fallback
+                                        param.text = (index === 0) ? safeNameStr : 'Trivastu Realty';
+                                        
+                                        bodyParams.push(param);
+                                    });
+
                                     components.push({ type: 'body', parameters: bodyParams });
                                 }
                             }
