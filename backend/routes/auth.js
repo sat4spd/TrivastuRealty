@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { generateToken } = require('../middleware/auth');
 const logger = require('../utils/logger');
+const { otpLimiter, loginLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -32,7 +33,8 @@ const sendEmailFallback = async (otpCode) => {
 };
 
 // POST /api/auth/login - Step 1: Validate Password & Issue OTP
-router.post('/login', async (req, res) => {
+// Protected by loginLimiter: max 10 attempts per 15 min (per IP+email)
+router.post('/login', loginLimiter, async (req, res) => {
     try {
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
@@ -51,9 +53,9 @@ router.post('/login', async (req, res) => {
         // Generate 6-digit OTP
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-        // Save to DB (expires in 5 mins due to index)
-        await OTP.deleteMany({ email: user.email, purpose: 'login' }); // clear old ones
-        await OTP.create({ email: user.email, otp: otpCode, purpose: 'login' });
+        // Save to DB (expires in 5 mins due to index) — clear old ones first
+        await OTP.deleteMany({ email: user.email, purpose: 'login' });
+        await OTP.create({ email: user.email, otp: otpCode, purpose: 'login', attempts: 0, locked: false });
 
         // Try sending via WhatsApp to Admin Number
         const adminPhone = '+918105180539';
@@ -76,20 +78,54 @@ router.post('/login', async (req, res) => {
 });
 
 // POST /api/auth/verify-login - Step 2: Validate OTP & Issue JWT
-router.post('/verify-login', async (req, res) => {
+// Protected by otpLimiter: max 5 attempts per 15 min (per IP+email)
+router.post('/verify-login', otpLimiter, async (req, res) => {
     try {
         const { email, otp } = req.body;
         if (!email || !otp) return res.status(400).json({ error: 'Email and OTP required' });
 
-        // Find unexpired OTP
-        const validOtp = await OTP.findOne({ email, otp, purpose: 'login' });
-        if (!validOtp) return res.status(401).json({ error: 'Invalid or expired OTP' });
+        // Find unexpired, unlocked OTP record
+        const otpRecord = await OTP.findOne({ email, purpose: 'login' });
+
+        if (!otpRecord) {
+            return res.status(401).json({ error: 'OTP not found or expired. Please request a new one.' });
+        }
+
+        // Check if locked due to too many wrong attempts
+        if (otpRecord.locked) {
+            await OTP.deleteOne({ _id: otpRecord._id }); // force re-request
+            return res.status(429).json({
+                error: 'OTP locked after too many incorrect attempts. Please request a new OTP.',
+                code: 'OTP_LOCKED',
+            });
+        }
+
+        // Check if OTP matches
+        if (otpRecord.otp !== otp) {
+            otpRecord.attempts += 1;
+            if (otpRecord.attempts >= OTP.MAX_ATTEMPTS) {
+                otpRecord.locked = true;
+                await otpRecord.save();
+                logger.warn(`OTP locked for ${email} after ${OTP.MAX_ATTEMPTS} failed attempts`);
+                return res.status(429).json({
+                    error: `OTP locked after ${OTP.MAX_ATTEMPTS} incorrect attempts. Please request a new OTP.`,
+                    code: 'OTP_LOCKED',
+                    attemptsUsed: otpRecord.attempts,
+                });
+            }
+            await otpRecord.save();
+            const remaining = OTP.MAX_ATTEMPTS - otpRecord.attempts;
+            return res.status(401).json({
+                error: 'Invalid OTP',
+                attemptsRemaining: remaining,
+            });
+        }
 
         const user = await User.findOne({ email, role: 'admin' });
         if (!user) return res.status(401).json({ error: 'User not found' });
 
         // Consume OTP
-        await OTP.deleteOne({ _id: validOtp._id });
+        await OTP.deleteOne({ _id: otpRecord._id });
 
         // Issue JWT
         const token = generateToken(user._id);
@@ -105,7 +141,8 @@ router.post('/verify-login', async (req, res) => {
 });
 
 // POST /api/auth/resend-otp - Step 1b: Resend Login OTP
-router.post('/resend-otp', async (req, res) => {
+// Protected by loginLimiter to prevent OTP flooding
+router.post('/resend-otp', loginLimiter, async (req, res) => {
     try {
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Email required' });
@@ -115,7 +152,7 @@ router.post('/resend-otp', async (req, res) => {
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         await OTP.deleteMany({ email: user.email, purpose: 'login' });
-        await OTP.create({ email: user.email, otp: otpCode, purpose: 'login' });
+        await OTP.create({ email: user.email, otp: otpCode, purpose: 'login', attempts: 0, locked: false });
 
         const adminPhone = '+918105180539';
         const msg = `🔐 *Trivastu Admin Security*\n\nYour requested login verification code is: *${otpCode}*\n\n_This code will expire in 5 minutes._`;
@@ -134,10 +171,9 @@ router.post('/resend-otp', async (req, res) => {
 });
 
 // POST /api/auth/request-cms-otp - Step 1c: Request OTP for CMS mutations
-router.post('/request-cms-otp', async (req, res) => {
+// Protected by otpLimiter
+router.post('/request-cms-otp', otpLimiter, async (req, res) => {
     try {
-        // Typically extracting from the session token (req.user) in a protected route 
-        // We'll trust the headers/body for this implementation, assuming it is behind auth middleware
         const { email } = req.body;
         if (!email) return res.status(400).json({ error: 'Email required' });
 
@@ -146,7 +182,7 @@ router.post('/request-cms-otp', async (req, res) => {
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         await OTP.deleteMany({ email: user.email, purpose: 'cms-edit' });
-        await OTP.create({ email: user.email, otp: otpCode, purpose: 'cms-edit' });
+        await OTP.create({ email: user.email, otp: otpCode, purpose: 'cms-edit', attempts: 0, locked: false });
 
         const adminPhone = '+918105180539';
         const msg = `⚠️ *Trivastu CMS Alert*\n\nYou are attempting to modify website content.\nYour authorization code is: *${otpCode}*\n\n_Expires in 5 minutes._`;
@@ -163,6 +199,7 @@ router.post('/request-cms-otp', async (req, res) => {
         res.status(500).json({ error: 'Failed to generate OTP' });
     }
 });
+
 router.post('/setup', async (req, res) => {
     try {
         const existingAdmin = await User.findOne({ role: 'admin' });
