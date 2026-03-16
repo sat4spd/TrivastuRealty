@@ -53,7 +53,30 @@ app.use((req, res, next) => {
 });
 // Trust Nginx proxy — required for rate limiter and real IP detection
 app.set('trust proxy', 1);
-app.use(cors());
+
+// Configure CORS
+const allowedOrigins = [
+    'https://admin.trivastu.com',
+    'https://realty.trivastu.com',
+    'https://trivastu.com',
+    'https://www.trivastu.com'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) === -1) {
+            var msg = 'The CORS policy for this site does not ' +
+                'allow access from the specified Origin.';
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-otp-code']
+}));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
