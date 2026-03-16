@@ -99,8 +99,9 @@ const sendTemplate = async (to, templateName, parameters = [], isBroadcast = fal
         logChat(to, 'outgoing', 'template', `Template: ${templateName}`, '', isBroadcast);
         return response.data;
     } catch (error) {
-        logger.error('Failed to send template:', error.response?.data || error.message);
-        throw error;
+        const errorMsg = error.response?.data?.error?.message || error.message;
+        logger.error(`Failed to send template ${templateName}:`, errorMsg);
+        throw new Error(errorMsg);
     }
 };
 
