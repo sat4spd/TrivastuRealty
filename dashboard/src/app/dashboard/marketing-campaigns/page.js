@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Upload, Users, ShieldAlert, Sparkles, Send, Play, Square, Download, Activity, FileSpreadsheet, Check, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import styles from './campaigns.module.css';
 
 export default function MarketingCampaigns() {
   const [step, setStep] = useState(1);
@@ -73,12 +74,11 @@ export default function MarketingCampaigns() {
     if (activeTab === 'history') loadHistory();
   }, [activeTab]);
 
-  // Handle File Upload (Client-side parsing + server validation)
+  // Handle File Upload
   const handleFileUpload = async (e) => {
     const selectedFile = e.target.files[0];
     if (!selectedFile) return;
 
-    // Must be excel
     if (!selectedFile.name.match(/\.(xlsx|xls|csv)$/)) {
       alert("Please upload a valid Excel (.xlsx) file.");
       return;
@@ -128,7 +128,7 @@ export default function MarketingCampaigns() {
       const payload = {
         campaignName,
         contacts: audienceData.contacts,
-        messageText: messageType === 'ai' ? messageContent : templateName // Simplification: we either send text or template ID
+        messageText: messageType === 'ai' ? messageContent : templateName
       };
 
       const res = await axios.post('https://api.trivastu.com/api/campaigns/start', payload, { withCredentials: true });
@@ -157,391 +157,307 @@ export default function MarketingCampaigns() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+    <div className={styles.container}>
+      <div className={styles.header}>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Marketing Campaigns</h1>
-          <p className="text-sm text-gray-500 mt-1">Bulk WhatsApp marketing broadcast system with AI personalization.</p>
+          <h1 className={styles.title}>Marketing Campaigns</h1>
+          <p className={styles.subtitle}>Bulk WhatsApp marketing broadcast system with AI personalization.</p>
         </div>
         
-        {/* Anti-Ban Warning */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-red-50 text-red-700 rounded-lg border border-red-100 shadow-sm text-sm">
-          <ShieldAlert size={18} className="text-red-500" />
-          <div className="leading-tight">
+        <div className={styles.warningBox}>
+          <ShieldAlert size={20} />
+          <div>
             <strong>Anti-Ban Protection Active.</strong>
-            <p className="text-red-600/80 text-xs">Messages are sent with a 2-4 sec delay. Do not spam users who haven't opted in.</p>
+            <p>Messages are sent with a 2-4 sec delay. Do not spam users who haven't opted in.</p>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className={styles.tabs}>
         <button 
           onClick={() => setActiveTab('new')} 
-          className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'new' ? 'border-[#C8A45D] text-[#C8A45D]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`${styles.tab} ${activeTab === 'new' ? styles.active : ''}`}
         >
           New Campaign
         </button>
         <button 
           onClick={() => setActiveTab('history')} 
-          className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${activeTab === 'history' ? 'border-[#C8A45D] text-[#C8A45D]' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`${styles.tab} ${activeTab === 'history' ? styles.active : ''}`}
         >
           Campaign History & Reports
         </button>
       </div>
 
       {activeTab === 'new' ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col md:flex-row min-h-[600px]">
+        <div className={styles.card}>
           
-          {/* Left: Steps Sidebar */}
-          <div className="w-full md:w-64 bg-gray-50 border-r border-gray-200 p-6 shrink-0">
-            <ul className="space-y-6">
-              {[
-                { id: 1, name: 'Audience Upload', icon: Users, desc: 'Excel / CSV' },
-                { id: 2, name: 'Message Drafting', icon: Sparkles, desc: 'AI or Templates' },
-                { id: 3, name: 'Execution Dash', icon: Activity, desc: 'Live Monitoring' },
-              ].map(s => (
-                <li key={s.id} className={`flex gap-4 ${step === s.id ? 'opacity-100' : step > s.id ? 'opacity-60' : 'opacity-40 grayscale'}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border-2 font-bold text-sm transition-colors ${step === s.id ? 'border-[#C8A45D] bg-[#C8A45D]/10 text-[#C8A45D]' : step > s.id ? 'border-green-500 bg-green-50 text-green-600' : 'border-gray-300 text-gray-400'}`}>
-                    {step > s.id ? <Check size={16} /> : s.id}
-                  </div>
-                  <div>
-                    <h3 className={`font-semibold text-sm ${step === s.id ? 'text-gray-900' : 'text-gray-500'}`}>{s.name}</h3>
-                    <p className="text-xs text-gray-400">{s.desc}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
+          <div className={styles.wizardSidebar}>
+            {[
+              { id: 1, name: 'Audience Upload', desc: 'Excel / CSV' },
+              { id: 2, name: 'Message Drafting', desc: 'AI or Templates' },
+              { id: 3, name: 'Execution Dash', desc: 'Live Monitoring' },
+            ].map(s => (
+              <div key={s.id} className={`${styles.wizardStep} ${step === s.id ? styles.active : step > s.id ? styles.completed : ''}`}>
+                <div className={styles.stepIcon}>
+                  {step > s.id ? '✓' : s.id}
+                </div>
+                <div className={styles.stepText}>
+                  <h3>{s.name}</h3>
+                  <p>{s.desc}</p>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* Right: Step Content */}
-          <div className="flex-1 p-8 bg-white relative">
+          <div className={styles.contentArea}>
             
-            {/* STEP 1: AUDIENCE */}
+            {/* STEP 1 */}
             {step === 1 && (
-              <div className="max-w-xl mx-auto space-y-8 animate-in fade-in slide-in-from-right-4">
-                <div className="text-center">
-                  <h2 className="text-2xl font-bold text-gray-900">Upload Audience</h2>
-                  <p className="text-gray-500 text-sm mt-2">Upload an Excel file (.xlsx). It must contain a <strong>Name</strong> column and a <strong>Phone</strong> column.</p>
-                </div>
+              <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+                <h2 className={styles.stepTitle}>Upload Audience</h2>
+                <p className={styles.stepDesc}>Upload an Excel file (.xlsx) containing a <strong>Name</strong> and <strong>Phone</strong> column.</p>
 
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-colors ${isUploading ? 'border-gray-300 bg-gray-50' : 'border-[#C8A45D]/50 hover:bg-[#C8A45D]/5 bg-gray-50/50'}`}
-                >
-                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".xlsx,.xls,.csv" />
+                <div className={styles.uploadBox} onClick={() => fileInputRef.current?.click()}>
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} style={{ display: 'none' }} accept=".xlsx,.xls,.csv" />
                   {isUploading ? (
-                    <div className="flex flex-col items-center gap-4 text-[#C8A45D]">
-                      <div className="h-10 w-10 border-4 border-[#C8A45D] border-t-transparent rounded-full animate-spin" />
-                      <p className="font-semibold">Parsing Database...</p>
+                    <div style={{ color: '#C8A45D' }}>
+                      <p style={{ fontWeight: 'bold' }}>Parsing Database...</p>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center gap-4 text-gray-500 hover:text-[#C8A45D]">
-                      <div className="h-16 w-16 bg-[#C8A45D]/10 rounded-full flex items-center justify-center text-[#C8A45D]">
+                    <div>
+                      <div className={styles.uploadIconWrap}>
                         <FileSpreadsheet size={32} />
                       </div>
-                      <div>
-                        <p className="font-semibold text-lg text-gray-900">Click to Select Excel File</p>
-                        <p className="text-sm mt-1">Maximum 10,000 rows per campaign</p>
-                      </div>
+                      <h3 style={{ margin: 0, fontSize: '16px', color: '#111827' }}>Click to Select Excel File</h3>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#6B7280' }}>Maximum 10,000 rows per campaign</p>
                     </div>
                   )}
                 </div>
 
-                {/* Data Preview */}
                 {audienceData.total > 0 && !isUploading && (
-                  <div className="space-y-4">
-                    <div className="flex gap-4 p-4 rounded-xl bg-gray-50 border border-gray-100">
-                      <div className="flex-1">
-                        <p className="text-xs text-gray-500 uppercase tracking-wider font-semibold">Total Rows</p>
-                        <p className="text-2xl font-bold text-gray-900">{audienceData.totalRows}</p>
+                  <>
+                    <div className={styles.statsBar}>
+                      <div className={styles.statItem}>
+                        <div className={styles.statLabel}>Total Rows</div>
+                        <div className={styles.statValue}>{audienceData.totalRows}</div>
                       </div>
-                      <div className="flex-1 border-l pl-4 border-gray-200">
-                        <p className="text-xs text-green-600 uppercase tracking-wider font-semibold">Valid Phones 📥</p>
-                        <p className="text-2xl font-bold text-green-700">{audienceData.validContacts}</p>
+                      <div className={styles.statItem}>
+                        <div className={styles.statLabel}>Valid Phones</div>
+                        <div className={`${styles.statValue} ${styles.green}`}>{audienceData.validContacts}</div>
                       </div>
-                      <div className="flex-1 border-l pl-4 border-gray-200">
-                        <p className="text-xs text-red-500 uppercase tracking-wider font-semibold">Invalid/Empty 📉</p>
-                        <p className="text-2xl font-bold text-red-600">{audienceData.invalidContacts}</p>
+                      <div className={styles.statItem}>
+                        <div className={styles.statLabel}>Invalid Formats</div>
+                        <div className={`${styles.statValue} ${styles.red}`}>{audienceData.invalidContacts}</div>
                       </div>
                     </div>
 
-                    <div className="rounded-xl border border-gray-200 overflow-hidden">
-                      <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                        <p className="text-xs font-semibold text-gray-600">PREVIEW (FIRST 5 ROWS)</p>
-                      </div>
-                      <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-gray-500 bg-white">
-                          <tr>
-                            <th className="px-4 py-2 font-medium border-b border-r bg-gray-50/50">Name</th>
-                            <th className="px-4 py-2 font-medium border-b bg-gray-50/50">Parsed WhatsApp Number</th>
+                    <table className={styles.dataTable}>
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Parsed WhatsApp Number</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {audienceData.sample?.map((s, i) => (
+                          <tr key={i}>
+                            <td>{s.name || <em>Empty</em>}</td>
+                            <td style={{ color: '#047857', fontFamily: 'monospace' }}>+{s.phone}</td>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100 bg-white">
-                          {audienceData.sample?.map((s, i) => (
-                            <tr key={i} className="hover:bg-gray-50">
-                              <td className="px-4 py-2 border-r">{s.name || <span className="text-gray-400 italic">Empty</span>}</td>
-                              <td className="px-4 py-2 font-mono text-green-700 text-xs">+{s.phone}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
                 )}
               </div>
             )}
 
-            {/* STEP 2: MESSAGE */}
+            {/* STEP 2 */}
             {step === 2 && (
-              <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in slide-in-from-right-4 h-full flex flex-col">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold text-gray-900">Compose Message</h2>
-                  <div className="inline-flex bg-gray-100 p-1 rounded-lg">
-                    <button onClick={() => setMessageType('ai')} className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${messageType === 'ai' ? 'bg-white shadow text-[#C8A45D]' : 'text-gray-500 hover:text-gray-900'}`}>✨ AI Generation</button>
-                    <button onClick={() => setMessageType('template')} className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${messageType === 'template' ? 'bg-white shadow text-[#C8A45D]' : 'text-gray-500 hover:text-gray-900'}`}>📋 Templates</button>
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h2 className={styles.stepTitle} style={{ textAlign: 'left', margin: 0 }}>Compose Message</h2>
+                  <div style={{ background: '#F3F4F6', padding: '4px', borderRadius: '8px', display: 'flex', gap: '4px' }}>
+                    <button 
+                      onClick={() => setMessageType('ai')} 
+                      style={{ padding: '6px 16px', border: 'none', background: messageType==='ai' ? 'white' : 'transparent', borderRadius: '6px', fontWeight: 'bold', color: messageType==='ai' ? '#C8A45D' : '#6B7280', cursor: 'pointer', boxShadow: messageType==='ai' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' }}
+                    >✨ AI Gen</button>
+                    <button 
+                      onClick={() => setMessageType('template')}
+                      style={{ padding: '6px 16px', border: 'none', background: messageType==='template' ? 'white' : 'transparent', borderRadius: '6px', fontWeight: 'bold', color: messageType==='template' ? '#C8A45D' : '#6B7280', cursor: 'pointer', boxShadow: messageType==='template' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none' }}
+                    >📋 Target Template</button>
                   </div>
                 </div>
 
-                <div className="flex gap-6 flex-1 min-h-0">
-                  {/* Left Controls */}
-                  <div className="w-1/2 space-y-5 flex flex-col">
+                <div className={styles.messageLayout}>
+                  <div className={styles.messageControls}>
                     {messageType === 'ai' ? (
                       <>
-                        <div className="space-y-2 flex-1 flex flex-col">
-                          <label className="text-sm font-semibold text-gray-700">What are we promoting today?</label>
+                        <div>
+                          <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 'bold', color: '#374151' }}>What are we promoting today?</label>
                           <textarea 
-                            value={aiPrompt}
-                            onChange={e => setAiPrompt(e.target.value)}
-                            placeholder="e.g. Write a festive offer for Diwali giving 50,000 off on flat bookings."
-                            className="w-full h-32 p-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#C8A45D] focus:border-[#C8A45D] resize-none"
+                            className={styles.textarea} 
+                            value={aiPrompt} 
+                            onChange={e => setAiPrompt(e.target.value)} 
                           />
-                          <button 
-                            onClick={handleGenerateAI}
-                            disabled={isGenerating || !aiPrompt}
-                            className="w-full py-3 bg-gray-900 hover:bg-black text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
-                          >
-                            {isGenerating ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Sparkles size={18} />}
-                            {isGenerating ? 'Generating Magic...' : 'Generate Marketing Copy'}
+                          <button className={styles.primaryBtn} onClick={handleGenerateAI} disabled={isGenerating} style={{ width: '100%', marginTop: '8px' }}>
+                            {isGenerating ? 'Generating...' : 'Generate Marketing Copy'}
                           </button>
                         </div>
-
-                        <div className="space-y-2 flex-1 flex flex-col">
-                          <label className="text-sm font-semibold text-gray-700">Refine Copy (Edit directly if needed)</label>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                          <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 'bold', color: '#374151' }}>Refine Copy (Edit directly if needed)</label>
                           <textarea 
-                            value={messageContent}
-                            onChange={e => setMessageContent(e.target.value)}
-                            placeholder="Generated message will appear here..."
-                            className="w-full flex-1 p-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#C8A45D] focus:border-[#C8A45D] resize-none"
+                            className={styles.textarea} 
+                            style={{ flex: 1 }}
+                            value={messageContent} 
+                            onChange={e => setMessageContent(e.target.value)} 
+                            placeholder="Generated message goes here..."
                           />
                         </div>
                       </>
                     ) : (
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-gray-700">Meta Template Name</label>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 'bold', color: '#374151' }}>Meta Template Name</label>
                         <input 
                           type="text" 
                           value={templateName}
                           onChange={e => setTemplateName(e.target.value)}
-                          className="w-full p-3 border border-gray-200 rounded-xl text-sm"
-                          placeholder="e.g. marketing_broadcast_1"
+                          style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #D1D5DB' }}
                         />
-                        <p className="text-xs text-gray-500">The exact template name registered in your WhatsApp Business Manager.</p>
                       </div>
                     )}
                   </div>
 
-                  {/* Right Preview (WhatsApp Bubble) */}
-                  <div className="w-1/2 bg-[url('https://i.pinimg.com/736x/8c/98/99/8c98994518b575bfd8c949e91d20548b.jpg')] bg-cover relative rounded-2xl border border-gray-200 overflow-hidden flex flex-col">
-                    <div className="bg-[#075e54] text-white px-4 py-3 flex items-center gap-3 shadow-md z-10">
-                      <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                        <img src="/logo.png" className="w-6 h-6 object-contain filter invert opacity-80" alt="T" />
-                      </div>
+                  <div className={styles.phonePreview}>
+                    <div className={styles.phoneHeader}>
+                      <div className={styles.phoneAvatar}>T</div>
                       <div>
-                        <p className="font-semibold text-sm">Trivastu Realty</p>
-                        <p className="text-[10px] text-white/70">Business Account</p>
+                        <p className={styles.phoneName}>Trivastu Realty</p>
+                        <p className={styles.phoneSub}>Business Account</p>
                       </div>
                     </div>
-                    
-                    <div className="flex-1 p-4 overflow-y-auto w-full max-w-full">
-                      {/* Interactive Msg Mockup */}
-                      <div className="bg-white rounded-xl rounded-tl-none p-1.5 shadow-sm max-w-[90%] break-words">
-                        <div className="p-2 text-[13px] leading-relaxed whitespace-pre-wrap text-gray-800 font-sans break-words break-all" style={{wordBreak: "break-word"}}>
-                          {messageType === 'ai' 
-                            ? (messageContent || <span className="text-gray-400 italic">Generate a message to see preview...</span>)
-                            : <span className="text-gray-500 italic">[Template Content will be populated by Meta]</span>
-                          }
-                        </div>
-                        {messageType === 'ai' && (
-                          <div className="mt-2 space-y-[1px] border-t border-gray-100 pt-[1px]">
-                             <div className="w-full py-2 bg-gray-50 hover:bg-gray-100 text-center text-[13px] text-[#00a884] cursor-pointer outline-none font-medium border-b border-gray-100">
-                                ✅ I am interested
-                             </div>
-                             <div className="w-full py-2 bg-gray-50 hover:bg-gray-100 text-center text-[13px] text-[#00a884] cursor-pointer outline-none font-medium rounded-b-lg">
-                                🛑 Stop messages
-                             </div>
-                          </div>
-                        )}
-                      </div>
+                    <div className={styles.phoneBody}>
+                       <div className={styles.waMessage}>
+                         {messageType === 'ai' ? (messageContent || <em>Generate a message...</em>) : <em>[Template rendering]</em>}
+                         {messageType === 'ai' && (
+                           <div className={styles.waButtons}>
+                             <div className={styles.waBtn}>✅ I am interested</div>
+                             <div className={styles.waBtn}>🛑 Stop messages</div>
+                           </div>
+                         )}
+                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="border-t border-gray-100 pt-4 flex justify-between items-center mt-auto">
-                  <button onClick={() => setStep(1)} className="px-6 py-2.5 text-sm font-semibold text-gray-600 hover:text-gray-900">Back</button>
-                  <div className="flex items-center gap-4">
+                <div className={styles.actionFooter}>
+                  <button onClick={() => setStep(1)} style={{ background: 'none', border: 'none', color: '#6B7280', fontWeight: 'bold', cursor: 'pointer' }}>Back</button>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                     <input 
                       type="text" 
                       placeholder="Name this Campaign..."
                       value={campaignName}
                       onChange={e => setCampaignName(e.target.value)}
-                      className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm w-64 focus:border-[#C8A45D] outline-none"
+                      style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #D1D5DB', width: '250px' }}
                     />
                     <button 
+                      className={styles.actionBtn} 
                       onClick={handleStartCampaign}
-                      disabled={isStarting || !campaignName || (messageType === 'ai' && !messageContent)}
-                      className="px-6 py-2.5 bg-[#C8A45D] hover:bg-[#b08f4c] text-white rounded-xl font-bold flex items-center gap-2 transition-all disabled:opacity-50"
+                      disabled={isStarting || !campaignName || (messageType==='ai' && !messageContent)}
                     >
-                      {isStarting ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Send size={16} />}
-                      Launch Campaign
+                      <Send size={16} /> Launch Campaign
                     </button>
                   </div>
                 </div>
-
               </div>
             )}
 
-            {/* STEP 3: EXECUTION */}
+            {/* STEP 3 */}
             {step === 3 && (
-              <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in zoom-in-95 pt-8">
-                <div className="text-center space-y-2">
-                  <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 shadow-lg ${campaignStats.status === 'running' ? 'bg-[#C8A45D] animate-pulse' : campaignStats.status === 'stopped' ? 'bg-red-500' : 'bg-green-500'}`}>
-                    {campaignStats.status === 'running' ? <Send size={28} className="text-white ml-1" /> : campaignStats.status === 'stopped' ? <Square size={24} className="text-white" /> : <Check size={32} className="text-white" />}
+              <div style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center', paddingTop: '32px' }}>
+                <div style={{
+                  width: '64px', height: '64px', borderRadius: '50%', margin: '0 auto 24px auto', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white',
+                  background: campaignStats.status === 'running' ? '#C8A45D' : campaignStats.status === 'stopped' ? '#EF4444' : '#10B981'
+                }}>
+                  {campaignStats.status === 'running' ? <Send size={32} style={{marginLeft: '4px'}}/> : campaignStats.status==='stopped' ? <Square size={28}/> : <Check size={36}/>}
+                </div>
+                
+                <h2 style={{ fontSize: '32px', margin: '0 0 8px 0', color: '#111827' }}>{campaignName}</h2>
+                <span style={{ 
+                  display: 'inline-block', padding: '4px 12px', borderRadius: '16px', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase',
+                  background: campaignStats.status === 'running' ? '#FEF3C7' : '#F3F4F6', color: campaignStats.status === 'running' ? '#D97706' : '#6B7280'
+                }}>
+                  Status: {campaignStats.status}
+                </span>
+
+                <div className={styles.progressContainer}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#6B7280'}}>Progress</span>
+                     <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#111827'}}>{Math.round(((campaignStats.sent + campaignStats.failed) / campaignStats.total) * 100)}%</span>
                   </div>
-                  <h2 className="text-3xl font-bold text-gray-900">{campaignName}</h2>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-full text-xs font-semibold uppercase tracking-wider text-gray-600">
-                    <span className={`w-2 h-2 rounded-full ${campaignStats.status === 'running' ? 'bg-amber-500 animate-ping' : campaignStats.status === 'stopped' ? 'bg-red-500' : 'bg-green-500'}`} />
-                    {campaignStats.status}
+                  <div className={styles.progressBar}>
+                    <div className={styles.progressFillGreen} style={{ width: `${(campaignStats.sent / campaignStats.total) * 100}%` }} />
+                    <div className={styles.progressFillRed} style={{ width: `${(campaignStats.failed / campaignStats.total) * 100}%` }} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '16px', marginTop: '24px' }}>
+                     <div style={{ flex: 1, background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #E5E7EB'}}>
+                       <p style={{ margin: 0, fontSize: '11px', color: '#6B7280', textTransform: 'uppercase', fontWeight: 'bold'}}>Total</p>
+                       <p style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 'bold'}}>{campaignStats.total}</p>
+                     </div>
+                     <div style={{ flex: 1, background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #D1FAE5'}}>
+                       <p style={{ margin: 0, fontSize: '11px', color: '#059669', textTransform: 'uppercase', fontWeight: 'bold'}}>Delivered</p>
+                       <p style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 'bold', color: '#047857'}}>{campaignStats.sent}</p>
+                     </div>
+                     <div style={{ flex: 1, background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid #FEE2E2'}}>
+                       <p style={{ margin: 0, fontSize: '11px', color: '#DC2626', textTransform: 'uppercase', fontWeight: 'bold'}}>Failed</p>
+                       <p style={{ margin: '4px 0 0 0', fontSize: '24px', fontWeight: 'bold', color: '#B91C1C'}}>{campaignStats.failed}</p>
+                     </div>
                   </div>
                 </div>
 
-                <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
-                  <div className="flex justify-between items-end mb-2">
-                    <span className="text-sm font-semibold text-gray-600">Progress</span>
-                    <span className="text-2xl font-bold text-gray-900">{Math.round(((campaignStats.sent + campaignStats.failed) / campaignStats.total) * 100)}%</span>
-                  </div>
-                  
-                  {/* Progress Bar Container */}
-                  <div className="w-full h-4 bg-gray-200 rounded-full overflow-hidden flex">
-                    <div 
-                      className="h-full bg-[#C8A45D] transition-all duration-1000 ease-out"
-                      style={{ width: `${(campaignStats.sent / campaignStats.total) * 100}%` }}
-                    />
-                    <div 
-                      className="h-full bg-red-400 transition-all duration-1000 ease-out"
-                      style={{ width: `${(campaignStats.failed / campaignStats.total) * 100}%` }}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4 mt-6">
-                    <div className="bg-white p-4 rounded-xl border border-gray-100 text-center">
-                      <p className="text-xs text-gray-500 font-semibold uppercase">Total</p>
-                      <p className="text-2xl font-bold text-gray-900 mt-1">{campaignStats.total}</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-green-100 text-center">
-                      <p className="text-xs text-green-600 font-semibold uppercase">Delivered</p>
-                      <p className="text-2xl font-bold text-green-700 mt-1">{campaignStats.sent}</p>
-                    </div>
-                    <div className="bg-white p-4 rounded-xl border border-red-100 text-center">
-                      <p className="text-xs text-red-500 font-semibold uppercase">Failed</p>
-                      <p className="text-2xl font-bold text-red-600 mt-1">{campaignStats.failed}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-center gap-4">
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
                   {campaignStats.status === 'running' ? (
-                    <button 
-                      onClick={handleStopCampaign}
-                      className="px-8 py-3 bg-red-500 hover:bg-red-600 shadow-md shadow-red-500/20 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
-                    >
-                      <Square size={18} fill="currentColor" /> Stop Campaign
-                    </button>
+                    <button onClick={handleStopCampaign} style={{ background: '#EF4444', color: 'white', border: 'none', padding: '12px 32px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}><Square size={16} fill="white"/> Stop Loop</button>
                   ) : (
-                    <button 
-                      onClick={() => handleDownloadReport(activeCampaignId)}
-                      className="px-8 py-3 bg-gray-900 hover:bg-black shadow-md shadow-black/20 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
-                    >
-                      <Download size={18} /> Download Detailed Log (CSV)
-                    </button>
+                    <button onClick={() => handleDownloadReport(activeCampaignId)} style={{ background: '#111827', color: 'white', border: 'none', padding: '12px 32px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}><Download size={16} /> Download Logs (CSV)</button>
                   )}
                 </div>
-
-                <div className="text-center">
-                  <p className="text-xs text-gray-400">
-                    {campaignStats.status === 'running' 
-                      ? "Do not close this window. Messages are being sent slowly to avoid WhatsApp ban algorithms."
-                      : "Logs automatically expire and are deleted from the database securely after 7 days."}
-                  </p>
-                </div>
               </div>
             )}
+
           </div>
         </div>
       ) : (
         /* HISTORY TAB */
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className={styles.card} style={{ minHeight: 'auto', padding: '0', display: 'block' }}>
           {loadingHistory ? (
-            <div className="p-20 flex justify-center"><div className="w-8 h-8 rounded-full border-4 border-[#C8A45D] border-t-transparent animate-spin" /></div>
+            <div style={{ padding: '64px', textAlign: 'center' }}>Loading...</div>
           ) : campaignHistory.length === 0 ? (
-            <div className="p-20 text-center text-gray-500">
-              <Activity size={48} className="mx-auto text-gray-300 mb-4" />
-              <p className="font-medium text-lg text-gray-900">No campaigns yet</p>
-              <p className="text-sm">Start your first marketing broadcast to see reports here.</p>
-            </div>
+            <div style={{ padding: '64px', textAlign: 'center', color: '#6B7280' }}>No campaigns found.</div>
           ) : (
-            <table className="w-full text-sm text-left whitespace-nowrap">
-              <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider font-semibold">
+            <table className={styles.dataTable} style={{ margin: 0, border: 'none', borderRadius: 0 }}>
+              <thead>
                 <tr>
-                  <th className="px-6 py-4">Campaign Name</th>
-                  <th className="px-6 py-4">Date Started</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Volume</th>
-                  <th className="px-6 py-4">Success %</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+                  <th>Campaign Name</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Success</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {campaignHistory.map(campaign => (
-                  <tr key={campaign._id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-gray-900">{campaign.name}</td>
-                    <td className="px-6 py-4 text-gray-500">{new Date(campaign.createdAt).toLocaleDateString()} {new Date(campaign.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        campaign.status === 'completed' ? 'bg-green-100 text-green-700' : 
-                        campaign.status === 'running' ? 'bg-amber-100 text-amber-700' : 
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {campaign.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-gray-500">{campaign.totalRecipients.toLocaleString()}</td>
-                    <td className="px-6 py-4">
-                       <div className="flex items-center gap-2">
-                         <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                           <div className="h-full bg-green-500" style={{ width: `${campaign.totalRecipients > 0 ? (campaign.sentCount / campaign.totalRecipients) * 100 : 0}%`}} />
-                         </div>
-                         <span className="text-xs font-medium text-gray-600">{campaign.totalRecipients > 0 ? Math.round((campaign.sentCount / campaign.totalRecipients) * 100) : 0}%</span>
-                       </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={() => handleDownloadReport(campaign._id)}
-                        className="text-[#C8A45D] hover:text-[#b08f4c] font-semibold flex items-center gap-1 ml-auto"
-                      >
-                        <Download size={14} /> Report
-                      </button>
-                    </td>
+              <tbody>
+                {campaignHistory.map(c => (
+                  <tr key={c._id}>
+                     <td><strong style={{ color: '#111827' }}>{c.name}</strong></td>
+                     <td>{new Date(c.createdAt).toLocaleDateString()}</td>
+                     <td><span style={{ fontSize: '11px', background: '#F3F4F6', padding: '4px 8px', borderRadius: '12px', fontWeight: 'bold', textTransform: 'uppercase'}}>{c.status}</span></td>
+                     <td>{c.totalRecipients}</td>
+                     <td>{c.totalRecipients > 0 ? Math.round((c.sentCount / c.totalRecipients)*100) : 0}%</td>
+                     <td style={{ textAlign: 'right' }}>
+                       <button onClick={() => handleDownloadReport(c._id)} style={{ background: 'none', border: 'none', color: '#C8A45D', fontWeight: 'bold', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px'}}><Download size={14}/> CSV</button>
+                     </td>
                   </tr>
                 ))}
               </tbody>

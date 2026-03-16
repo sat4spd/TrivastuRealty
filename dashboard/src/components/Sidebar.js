@@ -52,8 +52,9 @@ const navItems = [
     {
         section: 'Engagement', items: [
             { href: '/dashboard/chats', icon: '💬', label: 'Live Chats' },
+            { href: '/dashboard/broadcasts', icon: '📢', label: 'Broadcasts' },
             { href: '/dashboard/groups', icon: '👨‍👩‍👧‍👦', label: 'Groups' },
-            { href: '/dashboard/marketing-campaigns', icon: '📢', label: 'Marketing Campaigns' },
+            { href: '/dashboard/marketing-campaigns', icon: '🎯', label: 'Marketing Campaigns' },
         ]
     },
     {
