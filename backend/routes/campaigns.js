@@ -115,7 +115,7 @@ router.get('/templates', auth, authorize('admin', 'manager'), async (req, res) =
 // ── 3. START CAMPAIGN (ASYNC BACKGROUND TASK) ──
 router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campaign'), async (req, res) => {
     try {
-        const { campaignName, contacts, messageText, messageType } = req.body;
+        const { campaignName, contacts, messageText, messageType, mediaUrl } = req.body;
         
         if (!contacts || contacts.length === 0) return res.status(400).json({ error: 'Audience list is empty' });
         if (!messageText) return res.status(400).json({ error: 'Message content is required' });
@@ -141,18 +141,11 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
             let failed = 0;
             
             // Fetch template specs to avoid Param Mismatch (Error 132000)
-            let expectedParamsCount = 0;
+            let tmplDef = null;
             if (messageType === 'template') {
                 try {
                     const templates = await whatsappService.getTemplates();
-                    const tmpl = templates.find(t => t.name === messageText);
-                    if (tmpl) {
-                        const body = tmpl.components.find(c => c.type === 'BODY');
-                        if (body && body.text) {
-                            const matches = body.text.match(/\{\{\d+\}\}/g);
-                            if (matches) expectedParamsCount = Array.from(new Set(matches)).length;
-                        }
-                    }
+                    tmplDef = templates.find(t => t.name === messageText);
                 } catch(e) { logger.warn("Could not pre-fetch template params count"); }
             }
 
@@ -165,21 +158,45 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
 
                 try {
                     if (messageType === 'template') {
-                        // Prepare exact number of parameters Meta expects
-                        const params = [];
-                        if (expectedParamsCount >= 1) {
-                            params.push(contact.name || 'Customer'); // {{1}} is usually the Name
-                        }
-                        // If template expects MORE than 1 param, pad it so it doesn't crash 132000
-                        for (let i = 1; i < expectedParamsCount; i++) {
-                            params.push('Trivastu Realty'); // Fallback for {{m}}
+                        const components = [];
+
+                        if (tmplDef) {
+                            // 1. Header Media Component
+                            const header = tmplDef.components.find(c => c.type === 'HEADER');
+                            if (header && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(header.format)) {
+                                const mType = header.format.toLowerCase();
+                                components.push({
+                                    type: 'header',
+                                    parameters: [{
+                                        type: mType,
+                                        [mType]: { link: mediaUrl || 'https://trivastu.com/placeholder.jpg' } // Fallback to avoid crash
+                                    }]
+                                });
+                            }
+
+                            // 2. Body Text Variables Component
+                            const body = tmplDef.components.find(c => c.type === 'BODY');
+                            if (body && body.text) {
+                                const matches = body.text.match(/\{\{\d+\}\}/g);
+                                if (matches) {
+                                    const expectedParamsCount = Array.from(new Set(matches)).length;
+                                    const bodyParams = [];
+                                    if (expectedParamsCount >= 1) {
+                                        bodyParams.push({ type: 'text', text: contact.name || 'Customer' });
+                                    }
+                                    for (let i = 1; i < expectedParamsCount; i++) {
+                                        bodyParams.push({ type: 'text', text: 'Trivastu Realty' });
+                                    }
+                                    components.push({ type: 'body', parameters: bodyParams });
+                                }
+                            }
                         }
 
                         // Send Official Meta Template
                         await whatsappService.sendTemplate(
                             contact.phone,
                             messageText, // templateName
-                            params,      // exactly matches required {{n}} count
+                            components,  // dynamically crafted component array matches API exactly
                             true         // isBroadcast
                         );
                     } else {
