@@ -23,7 +23,6 @@ export default function MarketingCampaigns() {
   const [aiPrompt, setAiPrompt] = useState('Write a 2-sentence WhatsApp message inviting clients to visit Sunrise Villas this weekend. Offer a 10% discount on spot booking.');
   const [isGenerating, setIsGenerating] = useState(false);
   const [templateName, setTemplateName] = useState('');
-  const [mediaUrl, setMediaUrl] = useState('');
 
   // Fetch Meta Templates
   useEffect(() => {
@@ -149,8 +148,7 @@ export default function MarketingCampaigns() {
         campaignName,
         contacts: audienceData.contacts,
         messageType,
-        messageText: messageType === 'ai' ? messageContent : templateName,
-        mediaUrl: messageType === 'template' ? mediaUrl : undefined
+        messageText: messageType === 'ai' ? messageContent : templateName
       };
 
       const res = await api.post('/campaigns/start', payload);
@@ -371,32 +369,6 @@ export default function MarketingCampaigns() {
                             <option value="">No approved templates found</option>
                           )}
                         </select>
-                        
-                        {/* Dynamic Field Detection for Templates */}
-                        {(() => {
-                           if (messageType !== 'template' || !templateName) return null;
-                           const selectedTemplate = metaTemplates.find(t => t.name === templateName);
-                           const headerComponent = selectedTemplate?.components?.find(c => c.type === 'HEADER');
-                           const expectedFormat = headerComponent && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(headerComponent.format) ? headerComponent.format : null;
-                           
-                           if (expectedFormat) {
-                             return (
-                               <div style={{ marginTop: '16px', background: '#FEF3C7', border: '1px solid #F59E0B', padding: '12px', borderRadius: '8px' }}>
-                                 <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 'bold', color: '#92400E' }}>
-                                   ⚠️ This template requires an {expectedFormat} Link
-                                 </label>
-                                 <input
-                                   type="url"
-                                   placeholder={`Paste direct ${expectedFormat.toLowerCase()} URL here (e.g., https://...)`}
-                                   value={mediaUrl}
-                                   onChange={e => setMediaUrl(e.target.value)}
-                                   style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #FCD34D' }}
-                                 />
-                               </div>
-                             );
-                           }
-                           return null;
-                        })()}
                       </div>
                     )}
                   </div>

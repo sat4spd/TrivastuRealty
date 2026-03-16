@@ -160,21 +160,7 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                     if (messageType === 'template') {
                         const components = [];
 
-                        if (tmplDef) {
-                            // 1. Header Media Component
-                            const header = tmplDef.components.find(c => c.type === 'HEADER');
-                            if (header && ['IMAGE', 'VIDEO', 'DOCUMENT'].includes(header.format)) {
-                                const mType = header.format.toLowerCase();
-                                components.push({
-                                    type: 'header',
-                                    parameters: [{
-                                        type: mType,
-                                        [mType]: { link: mediaUrl || 'https://trivastu.com/placeholder.jpg' } // Fallback to avoid crash
-                                    }]
-                                });
-                            }
-
-                            // 2. Body Text Variables Component
+                            // 1. Body Text Variables Component
                             const body = tmplDef.components.find(c => c.type === 'BODY');
                             if (body && body.text) {
                                 const matches = body.text.match(/\{\{\d+\}\}/g);
@@ -190,8 +176,6 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                                     components.push({ type: 'body', parameters: bodyParams });
                                 }
                             }
-                        }
-
                         // Send Official Meta Template
                         await whatsappService.sendTemplate(
                             contact.phone,
