@@ -19,6 +19,9 @@ const handleAdminMessage = async (phone, text, user) => {
     if (state.flow === 'admin_add_property') {
         return handleAdminAddPropertyFlow(phone, text, user);
     }
+    if (state.flow === 'admin_add_lead') {
+        return handleAdminAddLeadFlow(phone, text, user);
+    }
 
     // ── Handle interactive list reply IDs (from sendInteractiveList) ──
     const interactiveMap = {
@@ -29,6 +32,7 @@ const handleAdminMessage = async (phone, text, user) => {
         'admin_properties':   () => showProperties(phone),
         'admin_add_agent':    () => startAddAgent(phone, user),
         'admin_add_property': () => startAddProperty(phone, user),
+        'admin_add_lead':     () => startAddLead(phone, user),
     };
     if (interactiveMap[lower]) return interactiveMap[lower]();
 
@@ -43,6 +47,7 @@ const handleAdminMessage = async (phone, text, user) => {
         case 'properties': return showProperties(phone);
         case 'add_agent': return startAddAgent(phone, user);
         case 'add_property': return startAddProperty(phone, user);
+        case 'add_lead': return startAddLead(phone, user);
 
         case 'approve_agent':
             if (command.phone) return approveAgent(phone, command.phone);
@@ -77,6 +82,7 @@ const handleAdminMessage = async (phone, text, user) => {
     if (lower === '5') return startAddAgent(phone, user);
     if (lower === '6') return showProperties(phone);
     if (lower === '7') return startAddProperty(phone, user);
+    if (lower === '8' || lower === 'add lead') return startAddLead(phone, user);
 
     // Explicit old commands
     if (lower.startsWith('approve +91')) return approveAgent(phone, text.substring(8).trim());
@@ -114,6 +120,7 @@ const showAdminMenu = async (phone) => {
             }, {
                 title: 'Manage',
                 rows: [
+                    { id: 'admin_add_lead',     title: 'Add New Lead',       description: 'Manually add a customer lead' },
                     { id: 'admin_add_agent',    title: 'Add New Agent',      description: 'Register a new sales agent' },
                     { id: 'admin_add_property', title: 'Add Property',       description: 'List a new property' },
                 ],
@@ -125,7 +132,8 @@ const showAdminMenu = async (phone) => {
             `👑 *ADMIN PANEL — Trivastu Realty*\n\nType a command:\n\n` +
             `• *stats* — Dashboard overview\n• *pending* — Pending approvals\n• *leads* — Recent leads\n` +
             `• *agents* — View all agents\n• *add agent* — Register new agent\n` +
-            `• *properties* — View properties\n• *add property* — Add new property`
+            `• *properties* — View properties\n• *add property* — Add new property\n` +
+            `• *add lead* — Add a new manual lead`
         );
     }
 };
@@ -387,6 +395,59 @@ const handleAdminAddPropertyFlow = async (phone, text, user) => {
                 user.conversationState = {}; await user.save();
                 await whatsappService.sendTextMessage(phone, `✅ *Property Added Successfully!*\n🏠 ${d.title}\n📍 ${d.location} | 💰 ${formatCurrency(d.price)}`);
             } else await whatsappService.sendTextMessage(phone, `📸 Send images/videos, or type *done*`);
+            break;
+    }
+};
+
+// ── ADD LEAD FLOW ──
+const startAddLead = async (phone, user) => {
+    user.conversationState = { flow: 'admin_add_lead', step: 'ask_phone', data: {} };
+    await user.save();
+    await whatsappService.sendTextMessage(phone, `🎯 *Add Manual Lead*\n\n📱 Enter the customer's WhatsApp/Phone number:\n\n(e.g., +919876543210)\n\nType *cancel* to go back.`);
+};
+
+const handleAdminAddLeadFlow = async (phone, text, user) => {
+    const lower = text.toLowerCase().trim();
+    if (['cancel', 'menu', 'hi', 'hello', 'start', 'hey'].includes(lower)) { user.conversationState = {}; await user.save(); return showAdminMenu(phone); }
+    const d = user.conversationState.data;
+    
+    switch (user.conversationState.step) {
+        case 'ask_phone':
+            let p = text.replace(/\s/g, '');
+            if (!p.startsWith('+')) p = p.length === 10 ? '+91' + p : (p.length === 12 ? '+' + p : p);
+            d.phone = p; user.conversationState.step = 'ask_name'; await user.save();
+            await whatsappService.sendTextMessage(phone, `📱 Phone: *${p}* ✅\n\n👤 Enter customer's *name*:`); break;
+        case 'ask_name':
+            d.name = text; user.conversationState.step = 'ask_location'; await user.save();
+            await whatsappService.sendTextMessage(phone, `👤 Name: *${text}* ✅\n\n📍 Enter *location preference* (e.g. Ranchi):`); break;
+        case 'ask_location':
+            d.location = text; user.conversationState.step = 'ask_budget'; await user.save();
+            await whatsappService.sendTextMessage(phone, `📍 Location: *${text}* ✅\n\n💰 Enter *budget* (e.g., 50L, 1Cr, or 0 if unknown):`); break;
+        case 'ask_budget':
+            const v = text.toLowerCase();
+            d.budget = v.includes('cr') ? parseFloat(v) * 10000000 : (v.includes('l') ? parseFloat(v) * 100000 : parseFloat(v));
+            if (isNaN(d.budget)) d.budget = 0;
+            user.conversationState.step = 'ask_type'; await user.save();
+            await whatsappService.sendTextMessage(phone, `💰 Budget: *${formatCurrency(d.budget)}* ✅\n\n🏠 Enter *property type* (e.g., Flat, Villa, Plot):`); break;
+        case 'ask_type':
+            d.type = text; 
+            
+            // Create or find user
+            let custUser = await User.findOne({ phone: d.phone });
+            if (!custUser) custUser = await User.create({ phone: d.phone, name: d.name, role: 'customer' });
+            else if (!custUser.name) { custUser.name = d.name; await custUser.save(); }
+            
+            // Create lead
+            const newLead = await Lead.create({
+                customerId: custUser._id,
+                source: 'manual_admin',
+                location: d.location,
+                budget: d.budget,
+                propertyType: d.type
+            });
+            
+            user.conversationState = {}; await user.save();
+            await whatsappService.sendTextMessage(phone, `✅ *Lead Added Successfully!*\n👤 ${d.name} (${d.phone})\n📍 ${d.location} | 💰 ${formatCurrency(d.budget)} | 🏠 ${d.type}\n🔖 Lead ID: ${newLead._id}`);
             break;
     }
 };
