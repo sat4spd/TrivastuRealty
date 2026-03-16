@@ -2,7 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { processMessage, processMediaMessage, processVoiceMessage } = require('../services/flowEngine');
 const whatsappConfig = require('../config/whatsapp');
+const whatsappService = require('../services/whatsappService');
 const logger = require('../utils/logger');
+const CampaignLog = require('../models/CampaignLog');
+const Lead = require('../models/Lead');
 
 // Webhook verification (GET)
 router.get('/', (req, res) => {
@@ -66,6 +69,36 @@ router.post('/', async (req, res) => {
                             } else if (message.interactive?.type === 'list_reply') {
                                 text = message.interactive.list_reply.id;
                             }
+
+                            // Intercept marketing campaign responses
+                            if (text === 'marketing_interested' || text === 'marketing_optout') {
+                                try {
+                                    if (text === 'marketing_interested') {
+                                        await whatsappService.sendTextMessage(phone, "Thank you for your interest! An agent will contact you shortly. 📞");
+                                        // Update Campaign Log
+                                        await CampaignLog.findOneAndUpdate(
+                                            { phone },
+                                            { $set: { status: 'interested' } },
+                                            { sort: { createdAt: -1 } }
+                                        );
+                                        // Now we *allow* it to drop into the CRM by converting it to a text message
+                                        // so that the Lead gets created for the agent.
+                                        await processMessage(phone, "I am interested in the marketing campaign.", messageId);
+                                    } else if (text === 'marketing_optout') {
+                                        await whatsappService.sendTextMessage(phone, "We have noted your preference and will not send further marketing messages. 🙏");
+                                        await CampaignLog.findOneAndUpdate(
+                                            { phone },
+                                            { $set: { status: 'opted_out' } },
+                                            { sort: { createdAt: -1 } }
+                                        );
+                                        // Do NOT pass to processMessage to avoid CRM spam
+                                    }
+                                } catch (e) {
+                                    logger.error('Failed to process marketing response:', e.message);
+                                }
+                                break;
+                            }
+
                             if (text) {
                                 processMessage(phone, text, messageId).catch(err => {
                                     logger.error('Interactive message processing error:', err.message);

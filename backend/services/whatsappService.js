@@ -31,7 +31,7 @@ const sendTextMessage = async (to, text) => {
     }
 };
 
-const sendInteractiveButtons = async (to, bodyText, buttons) => {
+const sendInteractiveButtons = async (to, bodyText, buttons, isBroadcast = false) => {
     try {
         const response = await api.post('/messages', {
             messaging_product: 'whatsapp',
@@ -48,6 +48,10 @@ const sendInteractiveButtons = async (to, bodyText, buttons) => {
                 },
             },
         });
+        
+        // Log outgoing message. Tell the logger it's a broadcast to prevent Lead creation triggers etc.
+        logChat(to, 'outgoing', 'interactive', bodyText, '', isBroadcast);
+        
         return response.data;
     } catch (error) {
         logger.error('Failed to send interactive buttons:', error.response?.data || error.message);

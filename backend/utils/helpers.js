@@ -6,15 +6,31 @@ const formatCurrency = (amount) => {
 };
 
 const parsePhone = (phone) => {
-    let cleaned = phone.replace(/[^0-9+]/g, '');
-    if (!cleaned.startsWith('+')) {
-        if (cleaned.startsWith('91') && cleaned.length === 12) {
-            cleaned = '+' + cleaned;
-        } else if (cleaned.length === 10) {
-            cleaned = '+91' + cleaned;
-        }
+    if (!phone) return null;
+    // Strip everything except numbers
+    let cleaned = String(phone).replace(/[^0-9]/g, '');
+    
+    // Auto-append +91 for standard 10 digit Indian numbers
+    if (cleaned.length === 10) {
+        return '+91' + cleaned;
     }
-    return cleaned;
+    
+    // Auto-append + to 12 digit numbers starting with 91
+    if (cleaned.length === 12 && cleaned.startsWith('91')) {
+        return '+' + cleaned;
+    }
+
+    // Pass-through anything else formatted with a plus
+    if (String(phone).startsWith('+')) {
+         return phone.replace(/[^0-9+]/g, '');
+    }
+
+    // Fallback: Just return the digits with a plus (assumes country code is included but missing +)
+    if (cleaned.length > 10) {
+        return '+' + cleaned;
+    }
+
+    return null; // Invalid number length
 };
 
 const sanitizeText = (text) => {

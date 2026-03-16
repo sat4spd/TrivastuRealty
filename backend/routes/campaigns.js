@@ -163,7 +163,8 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                         [
                             { id: 'marketing_interested', title: '✅ I am interested' },
                             { id: 'marketing_optout', title: '🛑 Stop messages' }
-                        ]
+                        ],
+                        true // isBroadcast flag prevents automatic lead creation
                     );
 
                     await CampaignLog.create({

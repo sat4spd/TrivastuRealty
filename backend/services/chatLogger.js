@@ -7,9 +7,9 @@ const setSocketIO = (socket) => {
     io = socket;
 };
 
-const logChat = async (phone, direction, type, content, mediaUrl = '') => {
+const logChat = async (phone, direction, type, content, mediaUrl = '', isBroadcast = false) => {
     try {
-        // Find user role
+        // Find user role (creates a Lead if customerFlow intercepts it later, but we just want the role here)
         const { role } = await detectRole(phone);
 
         // Save to DB
@@ -20,6 +20,7 @@ const logChat = async (phone, direction, type, content, mediaUrl = '') => {
             content,
             mediaUrl,
             role,
+            isBroadcast, // Flag to hide from active CRM Inbox or prevent lead triggers if needed
             timestamp: new Date()
         });
 
