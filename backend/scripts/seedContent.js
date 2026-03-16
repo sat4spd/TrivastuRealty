@@ -3,7 +3,7 @@
  * Seeds: Testimonials, Construction Projects, Services/Packages, Plot Listings, Business Info
  * Use --force flag to replace existing data: node scripts/seedContent.js --force
  */
-require('dotenv').config();
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const Testimonial = require('../models/Testimonial');
 const Project = require('../models/Project');
