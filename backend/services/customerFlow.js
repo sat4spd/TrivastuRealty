@@ -569,10 +569,17 @@ const handleSmartMessage = async (phone, text, user) => {
                 break;
             }
 
+            case INTENTS.SMALL_TALK: {
+                // Respond warmly and humanly — don't push properties
+                responseMsg = await generateResponse(text, history, user, null);
+                break;
+            }
+
             case INTENTS.GREET:
             case INTENTS.MENU:
             case INTENTS.CANCEL:
                 return handleReturningCustomer(phone, user);
+
 
             case INTENTS.FAQ:
             case INTENTS.OTHER:

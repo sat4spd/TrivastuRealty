@@ -256,4 +256,82 @@ router.delete('/realty-projects/:id', async (req, res) => {
     } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+
+// ── WEBSITE CHAT: Public lead capture endpoint ──
+// Called when visitor submits name + phone on the website chat widget
+router.post('/website-lead', async (req, res) => {
+    try {
+        const { name, phone, message, source } = req.body;
+        if (!phone) return res.status(400).json({ error: 'Phone number required' });
+
+        const Lead = require('../models/Lead');
+        const User = require('../models/User');
+
+        // Find or create user
+        let user = await User.findOne({ phone });
+        if (!user) {
+            user = await User.create({ phone, name: name || 'Website Visitor', role: 'customer' });
+        } else if (name && !user.name) {
+            user.name = name;
+            await user.save();
+        }
+
+        // Create lead
+        const lead = await Lead.create({
+            customerId: user._id,
+            source: source || 'website_chat',
+            location: 'Unknown',
+            budget: 0,
+        });
+
+        // Notify admin
+        const { notifyAdmin, ALERT_TYPES } = require('../services/notificationService');
+        await notifyAdmin(ALERT_TYPES.NEW_LEAD, {
+            name: name || phone,
+            phone,
+            propertyType: 'Website Chat Lead',
+            aiScore: 40,
+        });
+
+        res.json({ success: true, leadId: lead._id, userId: user._id });
+    } catch (e) {
+        logger.error('Website lead capture error:', e.message);
+        res.status(500).json({ error: 'Failed to capture lead' });
+    }
+});
+
+// ── WEBSITE CHAT: Public AI chat endpoint ──
+// Lightweight chat for website visitors — no WA required
+const websiteChatHistory = new Map(); // In-memory session store (resets on restart)
+router.post('/chat', async (req, res) => {
+    try {
+        const { message, sessionId, name } = req.body;
+        if (!message) return res.status(400).json({ error: 'Message required' });
+
+        const { generateResponse } = require('../services/llmService');
+
+        // Get or create session history
+        const key = sessionId || 'anon';
+        if (!websiteChatHistory.has(key)) websiteChatHistory.set(key, []);
+        const history = websiteChatHistory.get(key);
+
+        // Fetch a few properties for context
+        const props = await Property.find({ status: 'approved', isAvailable: true }).limit(5).lean();
+        const userProfile = name ? { name } : {};
+
+        const reply = await generateResponse(message, history, userProfile, props);
+
+        // Update history (cap at 10 turns)
+        history.push({ role: 'user', content: message });
+        history.push({ role: 'assistant', content: reply });
+        if (history.length > 20) history.splice(0, 2);
+        websiteChatHistory.set(key, history);
+
+        res.json({ reply });
+    } catch (e) {
+        logger.error('Website chat error:', e.message);
+        res.json({ reply: "I'm having trouble right now 😅 Please call us at +91 8655202633 or message us on WhatsApp!" });
+    }
+});
+
 module.exports = router;
