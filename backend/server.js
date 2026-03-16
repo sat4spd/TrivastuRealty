@@ -46,15 +46,10 @@ io.on('connection', (socket) => {
     });
 });
 
-// Middleware — skip helmet for webhook so Meta verification works through ngrok
-app.use((req, res, next) => {
-    if (req.path.startsWith('/webhook')) return next();
-    helmet()(req, res, next);
-});
 // Trust Nginx proxy — required for rate limiter and real IP detection
 app.set('trust proxy', 1);
 
-// Configure CORS
+// ── 1. CORS CONFIGURATION ─────────────────────────────────────────────
 const allowedOrigins = [
     'https://admin.trivastu.com',
     'https://realty.trivastu.com',
@@ -67,9 +62,7 @@ app.use(cors({
         // allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
         if (allowedOrigins.indexOf(origin) === -1) {
-            var msg = 'The CORS policy for this site does not ' +
-                'allow access from the specified Origin.';
-            return callback(new Error(msg), false);
+            return callback(new Error('CORS Policy: Origin not allowed'), false);
         }
         return callback(null, true);
     },
@@ -77,9 +70,32 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-otp-code']
 }));
+
+// ── 2. SECURITY HEADERS (HELMET) ──────────────────────────────────────
+// Disable helmet's CSP because we manage it in Nginx. This avoids 
+// conflicts and keeps headers clean for the browser.
+app.use((req, res, next) => {
+    if (req.path.startsWith('/webhook')) return next();
+    helmet({
+        contentSecurityPolicy: false,
+        crossOriginResourcePolicy: { policy: "cross-origin" }
+    })(req, res, next);
+});
+
+// ── 3. LOGGING & BODY PARSING ─────────────────────────────────────────
 app.use(morgan('dev'));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ── 4. DEBUG MIDDLEWARE ───────────────────────────────────────────────
+app.use((req, res, next) => {
+    if (req.method === 'POST') {
+        logger.debug(`[DEBUG] POST ${req.path} - Headers:`, req.headers['content-type']);
+        // Check if body keys are present (to verify parsing)
+        if (req.body) logger.debug(`[DEBUG] Body keys:`, Object.keys(req.body));
+    }
+    next();
+});
 
 // Root route
 app.get('/', (req, res) => {
