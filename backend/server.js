@@ -30,9 +30,61 @@ const cmsRoutes = require('./routes/cms');
 const app = express();
 const httpServer = createServer(app);
 
+// ── 1. BODY PARSING (TOP PRIORITY) ────────────────────────────────────
+// These must be at the very top to ensure req.body is populated
+// before any other middleware or rate limiters run.
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// ── 2. TRUST PROXY ───────────────────────────────────────────────────
+app.set('trust proxy', 1);
+
+// ── 3. LOGGING ────────────────────────────────────────────────────────
+app.use(morgan('dev'));
+
+// ── 4. CORS CONFIGURATION ─────────────────────────────────────────────
+const allowedOrigins = [
+    'https://admin.trivastu.com',
+    'https://realty.trivastu.com',
+    'https://plot.trivastu.com',
+    'https://trivastu.com',
+    'https://www.trivastu.com'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.indexOf(origin) === -1) {
+            return callback(new Error('CORS Policy Error'), false);
+        }
+        return callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-otp-code']
+}));
+
+// ── 5. SECURITY HEADERS (HELMET) ──────────────────────────────────────
+app.use((req, res, next) => {
+    if (req.path.startsWith('/webhook')) return next();
+    helmet({
+        contentSecurityPolicy: false, // Managed by Nginx
+        crossOriginResourcePolicy: { policy: "cross-origin" }
+    })(req, res, next);
+});
+
+// ── 6. DEBUG LOGGING ──────────────────────────────────────────────────
+app.use((req, res, next) => {
+    if (req.method === 'POST') {
+        const bodyKeys = req.body ? Object.keys(req.body) : 'null/undefined';
+        logger.debug(`[SERVER] POST ${req.path} | Content-Type: ${req.headers['content-type']} | Keys: ${bodyKeys}`);
+    }
+    next();
+});
+
 // Socket.io setup
 const io = new Server(httpServer, {
-    cors: { origin: '*', methods: ['GET', 'POST'] },
+    cors: { origin: allowedOrigins, credentials: true },
 });
 
 setSocketIO(io);
@@ -46,63 +98,12 @@ io.on('connection', (socket) => {
     });
 });
 
-// Trust Nginx proxy — required for rate limiter and real IP detection
-app.set('trust proxy', 1);
-
-// ── 1. CORS CONFIGURATION ─────────────────────────────────────────────
-const allowedOrigins = [
-    'https://admin.trivastu.com',
-    'https://realty.trivastu.com',
-    'https://trivastu.com',
-    'https://www.trivastu.com'
-];
-
-app.use(cors({
-    origin: function (origin, callback) {
-        // allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) === -1) {
-            return callback(new Error('CORS Policy: Origin not allowed'), false);
-        }
-        return callback(null, true);
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-otp-code']
-}));
-
-// ── 2. SECURITY HEADERS (HELMET) ──────────────────────────────────────
-// Disable helmet's CSP because we manage it in Nginx. This avoids 
-// conflicts and keeps headers clean for the browser.
-app.use((req, res, next) => {
-    if (req.path.startsWith('/webhook')) return next();
-    helmet({
-        contentSecurityPolicy: false,
-        crossOriginResourcePolicy: { policy: "cross-origin" }
-    })(req, res, next);
-});
-
-// ── 3. LOGGING & BODY PARSING ─────────────────────────────────────────
-app.use(morgan('dev'));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// ── 4. DEBUG MIDDLEWARE ───────────────────────────────────────────────
-app.use((req, res, next) => {
-    if (req.method === 'POST') {
-        logger.debug(`[DEBUG] POST ${req.path} - Headers:`, req.headers['content-type']);
-        // Check if body keys are present (to verify parsing)
-        if (req.body) logger.debug(`[DEBUG] Body keys:`, Object.keys(req.body));
-    }
-    next();
-});
-
 // Root route
 app.get('/', (req, res) => {
     res.json({ name: 'Trivastu Realty API', status: 'running' });
 });
 
-// Routes — webhook MUST be before other middleware
+// Routes
 app.use('/webhook', webhookLimiter, webhookRoutes);
 app.use('/api/auth', apiLimiter, authRoutes);
 app.use('/api/agents', apiLimiter, agentRoutes);
@@ -122,7 +123,7 @@ app.get('/health', (req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-    logger.error('Unhandled error:', err);
+    logger.error('Unhandled server error:', err);
     res.status(500).json({ error: 'Internal server error' });
 });
 
@@ -133,15 +134,8 @@ const start = async () => {
     await connectDB();
     httpServer.listen(PORT, () => {
         logger.info(`🚀 Trivastu Realty Backend running on port ${PORT}`);
-        logger.info(`📱 WhatsApp webhook: http://localhost:${PORT}/webhook`);
-        logger.info(`📊 API base: http://localhost:${PORT}/api`);
-        logger.info(`💚 Health: http://localhost:${PORT}/health`);
-
-        // Start automated daily backups
         startBackupService();
-        // Start enterprise daily agent AI briefings
         scheduleAgentBriefing();
-        // Start enterprise automated lead nurturing
         scheduleFollowUps();
     });
 };
