@@ -11,8 +11,11 @@ const api = axios.create({
     },
 });
 
-// WhatsApp API requires phone numbers WITHOUT '+' prefix
-const cleanPhone = (phone) => phone?.replace(/\+/g, '') || phone;
+// WhatsApp API requires phone numbers WITHOUT '+' prefix and as a String
+const cleanPhone = (phone) => {
+    if (!phone) return '';
+    return String(phone).replace(/\+/g, '').replace(/\s+/g, '').trim();
+};
 
 const sendTextMessage = async (to, text, isBroadcast = false) => {
     try {
@@ -20,7 +23,7 @@ const sendTextMessage = async (to, text, isBroadcast = false) => {
             messaging_product: 'whatsapp',
             to: cleanPhone(to),
             type: 'text',
-            text: { body: text },
+            text: { body: String(text || '') },
         });
         logger.info(`Message sent to ${to}`);
         logChat(to, 'outgoing', 'text', text, '', isBroadcast);
@@ -39,19 +42,17 @@ const sendInteractiveButtons = async (to, bodyText, buttons, isBroadcast = false
             type: 'interactive',
             interactive: {
                 type: 'button',
-                body: { text: bodyText },
+                body: { text: String(bodyText || '') },
                 action: {
                     buttons: buttons.map((btn, i) => ({
                         type: 'reply',
-                        reply: { id: btn.id || `btn_${i}`, title: btn.title.substring(0, 20) },
+                        reply: { id: String(btn.id || `btn_${i}`), title: String(btn.title || '').substring(0, 20) },
                     })),
                 },
             },
         });
         
-        // Log outgoing message. Tell the logger it's a broadcast to prevent Lead creation triggers etc.
         logChat(to, 'outgoing', 'interactive', bodyText, '', isBroadcast);
-        
         return response.data;
     } catch (error) {
         logger.error('Failed to send interactive buttons:', error.response?.data || error.message);
@@ -67,9 +68,9 @@ const sendInteractiveList = async (to, bodyText, buttonText, sections) => {
             type: 'interactive',
             interactive: {
                 type: 'list',
-                body: { text: bodyText },
+                body: { text: String(bodyText || '') },
                 action: {
-                    button: buttonText.substring(0, 20),
+                    button: String(buttonText || '').substring(0, 20),
                     sections,
                 },
             },
@@ -81,27 +82,41 @@ const sendInteractiveList = async (to, bodyText, buttonText, sections) => {
     }
 };
 
-const sendTemplate = async (to, templateName, parameters = [], isBroadcast = false) => {
+const sendTemplate = async (to, templateName, components = [], isBroadcast = false) => {
     try {
-        const response = await api.post('/messages', {
+        const phone = cleanPhone(to);
+        const payload = {
             messaging_product: 'whatsapp',
-            to: cleanPhone(to),
+            to: phone,
             type: 'template',
             template: {
-                name: templateName,
+                name: String(templateName).trim(),
                 language: { code: 'en' },
-                components: parameters.length > 0 ? [{
-                    type: 'body',
-                    parameters: parameters.map(p => ({ type: 'text', text: p })),
-                }] : [],
+                components: components
             },
-        });
+        };
+
+        // NUCLEAR FIX: Use direct axios to bypass any instance-level header/config issues
+        const response = await axios.post(
+            `https://graph.facebook.com/v22.0/${whatsappConfig.phoneNumberId}/messages`,
+            payload,
+            { 
+                headers: { 
+                    'Authorization': `Bearer ${whatsappConfig.token.trim()}`,
+                    'Content-Type': 'application/json'
+                } 
+            }
+        );
+
         logChat(to, 'outgoing', 'template', `Template: ${templateName}`, '', isBroadcast);
         return response.data;
     } catch (error) {
-        const errorMsg = error.response?.data?.error?.message || error.message;
-        logger.error(`Failed to send template ${templateName}:`, errorMsg);
-        throw new Error(errorMsg);
+        const errorData = error.response?.data?.error;
+        const errorMsg = errorData?.message || error.message;
+        const dataDetails = errorData?.error_data?.details || '';
+        
+        logger.error(`❌ Meta Cloud API Error [${templateName}]:`, errorMsg, dataDetails);
+        throw new Error(`${errorMsg} ${dataDetails}`.trim());
     }
 };
 
