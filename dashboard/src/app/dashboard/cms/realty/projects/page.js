@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { cmsAPI } from '@/lib/api';
+import { useOtp } from '@/components/OtpProvider';
 
 export default function RealtyProjectsPage() {
     const [projects, setProjects] = useState([]);
@@ -14,7 +15,7 @@ export default function RealtyProjectsPage() {
     useEffect(() => { loadData(); }, []);
     const loadData = async () => { try { const res = await cmsAPI.listRealtyProjects(); setProjects(res.data || []); } catch (e) { console.error(e); } finally { setLoading(false); } };
 
-    const { requestCmsOtp } = require('@/components/OtpProvider').useOtp();
+    const { requestCmsOtp } = useOtp();
 
     const handleSave = async (e) => {
         e.preventDefault();

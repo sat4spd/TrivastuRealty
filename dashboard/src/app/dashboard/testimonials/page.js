@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { cmsAPI } from '@/lib/api';
+import { useOtp } from '@/components/OtpProvider';
 
 export default function TestimonialsPage() {
     const [testimonials, setTestimonials] = useState([]);
@@ -23,7 +24,7 @@ export default function TestimonialsPage() {
         finally { setLoading(false); }
     };
 
-    const { requestCmsOtp } = require('@/components/OtpProvider').useOtp();
+    const { requestCmsOtp } = useOtp();
 
     const handleDelete = async (id) => {
         if (!confirm('Delete this testimonial?')) return;

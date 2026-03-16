@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { cmsAPI } from '@/lib/api';
+import { useOtp } from '@/components/OtpProvider';
 
 export default function TestimonialsPage() {
     const [testimonials, setTestimonials] = useState([]);
@@ -14,7 +15,7 @@ export default function TestimonialsPage() {
     useEffect(() => { loadData(); }, []);
     const loadData = async () => { try { const res = await cmsAPI.listTestimonials(); setTestimonials(res.data || []); } catch (e) { console.error(e); } finally { setLoading(false); } };
 
-    const { requestCmsOtp } = require('@/components/OtpProvider').useOtp();
+    const { requestCmsOtp } = useOtp();
 
     const handleSave = async (e) => {
         e.preventDefault();

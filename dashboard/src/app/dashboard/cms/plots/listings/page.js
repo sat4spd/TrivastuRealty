@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { propertiesAPI } from '@/lib/api';
 import api from '@/lib/api';
+import { useOtp } from '@/components/OtpProvider';
 
 export default function PlotListingsPage() {
     const [plots, setPlots] = useState([]);
@@ -40,7 +41,7 @@ export default function PlotListingsPage() {
         finally { setLoading(false); }
     };
 
-    const { requestCmsOtp } = require('@/components/OtpProvider').useOtp();
+    const { requestCmsOtp } = useOtp();
 
     const handleSave = async (e) => {
         e.preventDefault();

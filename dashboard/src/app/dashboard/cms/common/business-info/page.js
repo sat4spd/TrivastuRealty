@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { cmsAPI } from '@/lib/api';
+import { useOtp } from '@/components/OtpProvider';
 
 export default function BusinessInfoPage() {
     const [info, setInfo] = useState(null);
@@ -31,7 +32,7 @@ export default function BusinessInfoPage() {
         finally { setLoading(false); }
     };
 
-    const { requestCmsOtp } = require('@/components/OtpProvider').useOtp();
+    const { requestCmsOtp } = useOtp();
 
     const handleSave = async (e) => {
         e.preventDefault();

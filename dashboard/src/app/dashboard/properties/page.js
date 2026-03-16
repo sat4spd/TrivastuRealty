@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { propertiesAPI } from '@/lib/api';
+import { useOtp } from '@/components/OtpProvider';
 
 const formatCurrency = (amt) => {
     if (!amt) return '₹0';
@@ -62,7 +63,7 @@ export default function PropertiesPage() {
         finally { setLoading(false); }
     };
 
-    const { requestCmsOtp } = require('@/components/OtpProvider').useOtp();
+    const { requestCmsOtp } = useOtp();
 
     const handleApprove = async (id, status) => {
         try {
