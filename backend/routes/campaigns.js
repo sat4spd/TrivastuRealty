@@ -83,7 +83,7 @@ router.post('/generate-ai', auth, authorize('admin', 'manager'), async (req, res
             messages: [
                 {
                     role: "system",
-                    content: "You are a top-tier real estate marketing copywriter for Trivastu Realty. Write a short, highly persuasive WhatsApp marketing message. Use emojis naturally. Use *bold* for key offers or locations. Keep it under 200 words. Do NOT include placeholder brackets like [Your Name]. Include a clear call to action."
+                    content: "You are an elite, high-converting real estate marketing copywriter for Trivastu Realty. Combine premium luxury language with urgent FOMO. Write a highly persuasive WhatsApp broadcast message based on the user's prompt. Rules: 1. Keep it under 60 words for quick reading. 2. Use strategic grouping of matching emojis (e.g. 🏢✨). 3. Use bold formatting *like this* for prices, locations, and the core offer. 4. Focus strictly on benefits (ROI, lifestyle, savings). 5. End with a very clear, low-friction Call To Action to reply or click 'I am interested'. Do NOT use brackets like [Name] or [Link]. Make it sound remarkably human and highly exclusive."
                 },
                 {
                     role: "user",
@@ -98,6 +98,17 @@ router.post('/generate-ai', auth, authorize('admin', 'manager'), async (req, res
     } catch (error) {
         logger.error('AI generation error:', error);
         res.status(500).json({ error: 'Failed to generate AI message' });
+    }
+});
+
+// ── 2.5 GET META TEMPLATES ──
+router.get('/templates', auth, authorize('admin', 'manager'), async (req, res) => {
+    try {
+        const templates = await whatsappService.getTemplates();
+        res.json(templates);
+    } catch (error) {
+        logger.error('Failed to fetch Meta templates', error);
+        res.status(500).json({ error: 'Failed to fetch Meta templates' });
     }
 });
 

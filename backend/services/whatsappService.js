@@ -157,6 +157,31 @@ const downloadMedia = async (url) => {
     }
 };
 
+const getTemplates = async () => {
+    try {
+        // 1. Get WABA ID using Phone Number ID
+        const phoneRes = await axios.get(
+            `https://graph.facebook.com/v22.0/${whatsappConfig.phoneNumberId}?fields=whatsapp_business_account_id`,
+            { headers: { Authorization: `Bearer ${whatsappConfig.token}` } }
+        );
+        const wabaId = phoneRes.data.whatsapp_business_account_id?.id;
+        
+        if (!wabaId) throw new Error("Could not find WhatsApp Business Account ID");
+
+        // 2. Fetch templates for this WABA
+        const templatesRes = await axios.get(
+            `https://graph.facebook.com/v22.0/${wabaId}/message_templates?limit=100`,
+            { headers: { Authorization: `Bearer ${whatsappConfig.token}` } }
+        );
+        
+        // Return only approved templates
+        return templatesRes.data.data.filter(t => t.status === 'APPROVED');
+    } catch (error) {
+        logger.error('Failed to fetch templates:', error.response?.data || error.message);
+        throw error;
+    }
+};
+
 module.exports = {
     sendTextMessage,
     sendInteractiveButtons,
@@ -166,4 +191,5 @@ module.exports = {
     markAsRead,
     getMediaUrl,
     downloadMedia,
+    getTemplates,
 };

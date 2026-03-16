@@ -5,14 +5,6 @@ import { ShieldAlert, Send, Play, Square, Download, FileSpreadsheet, Check, X } 
 import * as XLSX from 'xlsx';
 import styles from './campaigns.module.css';
 
-const TEMPLATES = [
-  { id: 'marketing_broadcast_1', label: 'General Marketing Offer (marketing_broadcast_1)' },
-  { id: 'site_visit_invitation', label: 'Site Visit Invitation (site_visit_invitation)' },
-  { id: 'new_project_launch', label: 'New Project Launch (new_project_launch)' },
-  { id: 'payment_reminder', label: 'Payment/Booking Reminder (payment_reminder)' },
-  { id: 'festive_offer', label: 'Festive Season Offer (festive_offer)' }
-];
-
 export default function MarketingCampaigns() {
   const [step, setStep] = useState(1);
   const [activeTab, setActiveTab] = useState('new'); // 'new' or 'history'
@@ -24,11 +16,31 @@ export default function MarketingCampaigns() {
   const fileInputRef = useRef(null);
 
   // Step 2: Message
+  const [metaTemplates, setMetaTemplates] = useState([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [messageType, setMessageType] = useState('ai'); // 'ai' or 'template'
   const [messageContent, setMessageContent] = useState('');
   const [aiPrompt, setAiPrompt] = useState('Write a 2-sentence WhatsApp message inviting clients to visit Sunrise Villas this weekend. Offer a 10% discount on spot booking.');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [templateName, setTemplateName] = useState('marketing_broadcast_1');
+  const [templateName, setTemplateName] = useState('');
+
+  // Fetch Meta Templates
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      setLoadingTemplates(true);
+      try {
+        const res = await api.get('/campaigns/templates');
+        setMetaTemplates(res.data);
+        if (res.data.length > 0) {
+          setTemplateName(res.data[0].name);
+        }
+      } catch (e) {
+        console.error("Failed to fetch templates", e);
+      }
+      setLoadingTemplates(false);
+    };
+    fetchTemplates();
+  }, []);
 
   // Step 3: Execution
   const [campaignName, setCampaignName] = useState('');
@@ -344,10 +356,17 @@ export default function MarketingCampaigns() {
                           value={templateName}
                           onChange={e => setTemplateName(e.target.value)}
                           style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #D1D5DB', backgroundColor: 'white' }}
+                          disabled={loadingTemplates}
                         >
-                          {TEMPLATES.map(t => (
-                            <option key={t.id} value={t.id}>{t.label}</option>
-                          ))}
+                          {loadingTemplates ? (
+                            <option value="">Fetching templates...</option>
+                          ) : metaTemplates.length > 0 ? (
+                            metaTemplates.map(t => (
+                              <option key={t.id} value={t.name}>{t.name} ({t.language})</option>
+                            ))
+                          ) : (
+                            <option value="">No approved templates found</option>
+                          )}
                         </select>
                       </div>
                     )}
