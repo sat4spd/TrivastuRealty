@@ -242,7 +242,8 @@ const generateResponse = async (
     userMessage,
     conversationHistory = [],
     userProfile = {},
-    matchedProperties = []
+    matchedProperties = [],
+    matchTier = 'strict'
 ) => {
     try {
         // Build context block with user's profile + available properties
@@ -272,6 +273,17 @@ const generateResponse = async (
             contextBlock += `\nFINANCIAL ESTIMATES FOR LISTING #1:\n`;
             contextBlock += `- Estimated EMI (8.5%, 20 yrs, 80% loan): ${formatCurrency(emiEst)}/mo\n`;
             contextBlock += `- Total cost with Stamp Duty (6%) & Reg (1%): ${formatCurrency(acqCost.totalCost)}\n`;
+
+            contextBlock += `\nSEARCH MATCH QUALITY: ${matchTier}\n`;
+            if (matchTier === 'relaxed_budget') {
+                contextBlock += `NOTE: We couldn't find exact matches under the customer's budget, so these options are slightly higher. You MUST gently inform the customer that these are slightly above their budget but great options, and suggest they visit https://realty.trivastu.com to explore more.\n`;
+            } else if (matchTier === 'location_only') {
+                contextBlock += `NOTE: We strictly matched their location but couldn't match budget/type. You MUST kindly inform them that these are the closest matches in that area, and provide the link https://realty.trivastu.com to explore all options.\n`;
+            } else if (matchTier === 'general') {
+                contextBlock += `NOTE: We found NO properties matching their exact criteria. These are just general latest properties. You MUST politely say we don't have exact matches right now, but here are our newest properties, and give them the link https://realty.trivastu.com.\n`;
+            } else {
+                contextBlock += `NOTE: These are strict matches. Present the options naturally.\n`;
+            }
         } else if (matchedProperties !== null) {
             // Explicitly told no properties match — tell AI
             contextBlock += `\nNO PROPERTIES currently match the search criteria. Suggest alternatives or offer agent connection.\n`;

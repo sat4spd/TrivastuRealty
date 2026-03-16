@@ -337,7 +337,7 @@ const handleOnboardingStep = async (phone, text, user) => {
             );
 
             // Fetch matching properties instantly
-            const matches = await searchByQuery({
+            const { properties: matches, matchTier } = await searchByQuery({
                 budget: user.budget,
                 location: user.locationPreference,
                 propertyType: user.propertyType,
@@ -352,18 +352,17 @@ const handleOnboardingStep = async (phone, text, user) => {
             };
             await user.save();
 
-            const completionMsg = `✅ *Registration Complete!*
-
-📋 *Your Profile:*
-👤 ${user.name}
-💰 ${formatCurrency(user.budget)}
-📍 ${user.locationPreference}
-🏠 ${user.propertyType}
-
-Great! Let me show you the best matching properties now 👇`;
+            const completionMsg = `✅ *Registration Complete!*\n\n📋 *Your Profile:*\n👤 ${user.name}\n💰 ${formatCurrency(user.budget)}\n📍 ${user.locationPreference}\n🏠 ${user.propertyType}\n\nGreat! Let me show you the best matching properties now 👇`;
             await sendAndSave(phone, user, completionMsg);
 
             if (matches.length > 0) {
+                if (matchTier === 'relaxed_budget') {
+                    await sendAndSave(phone, user, `🔍 I couldn't find exact matches under your budget, but here are some great options slightly higher...`);
+                } else if (matchTier === 'location_only') {
+                    await sendAndSave(phone, user, `🔍 We don't have exactly what you asked for, but here are some options in ${user.locationPreference}... \n\n🌐 Explore all properties at https://realty.trivastu.com`);
+                } else if (matchTier === 'general') {
+                    await sendAndSave(phone, user, `🔍 I couldn't find exact matches in your location, but here are our newest properties... \n\n🌐 Explore everything at https://realty.trivastu.com`);
+                }
                 await sendPropertyInteractiveList(phone, matches);
             } else {
                 await sendAndSave(phone, user, `I'll alert my team and notify you when matching properties arrive. Let me know if you want to change any preferences or ask a question!`);
@@ -386,7 +385,7 @@ const handleSmartMessage = async (phone, text, user) => {
     }
 
     if (text === 'view_my_matches') {
-        const matches = await searchByQuery({
+        const { properties: matches, matchTier } = await searchByQuery({
             budget: user.budget,
             location: user.locationPreference,
             propertyType: user.propertyType,
@@ -397,6 +396,13 @@ const handleSmartMessage = async (phone, text, user) => {
         await user.save();
 
         if (matches.length > 0) {
+            if (matchTier === 'relaxed_budget') {
+                await sendAndSave(phone, user, `🔍 I couldn't find exact matches under your budget, but here are some great options slightly higher...`);
+            } else if (matchTier === 'location_only') {
+                await sendAndSave(phone, user, `🔍 We don't have exactly what you asked for, but here are some properties in ${user.locationPreference}... \n\n🌐 Explore all options at https://realty.trivastu.com`);
+            } else if (matchTier === 'general') {
+                await sendAndSave(phone, user, `🔍 I couldn't find exact matches, but here are our newest properties... \n\n🌐 Explore everything at https://realty.trivastu.com`);
+            }
             await sendPropertyInteractiveList(phone, matches);
         } else {
             await sendAndSave(phone, user, `No exact matches for ${user.locationPreference} under ${formatCurrency(user.budget)}. Want to try a different location or budget?`);
@@ -427,14 +433,14 @@ const handleSmartMessage = async (phone, text, user) => {
                 const idx = (entities.propertyIndex || parseInt(text)) - 1;
                 // Query using last search context
                 const ctx = user.lastSearchContext?.location ? user.lastSearchContext : user;
-                const matches = await searchByQuery({
+                const { properties: matches } = await searchByQuery({
                     budget: ctx.budget, location: ctx.locationPreference || ctx.location, propertyType: ctx.propertyType
                 });
 
                 if (idx >= 0 && idx < matches.length) {
                     const prop = matches[idx];
                     aiContextProperties = [prop];
-                    responseMsg = await generateResponse(text, history, user, aiContextProperties);
+                    responseMsg = await generateResponse(text, history, user, aiContextProperties, 'strict');
 
                     // Behavioral Tracking: Track that they viewed this property
                     if (user.trackPropertyView) {
@@ -477,12 +483,13 @@ const handleSmartMessage = async (phone, text, user) => {
                 if (updated) await user.save();
 
                 // Search database with NEW preferences
-                aiContextProperties = await searchByQuery({
+                const { properties: ptList, matchTier } = await searchByQuery({
                     budget: entities.budget || user.budget,
                     location: entities.location || user.locationPreference,
                     propertyType: entities.propertyType || user.propertyType,
                     bedrooms: entities.bedrooms
                 });
+                aiContextProperties = ptList;
 
                 // Update context
                 user.lastSearchContext = {
@@ -517,7 +524,7 @@ const handleSmartMessage = async (phone, text, user) => {
                 }
 
                 // Have AI generate friendly response wrapping the list
-                responseMsg = await generateResponse(text, history, user, aiContextProperties);
+                responseMsg = await generateResponse(text, history, user, aiContextProperties, matchTier);
                 break;
             }
 
@@ -576,12 +583,13 @@ const handleSmartMessage = async (phone, text, user) => {
 
                 // Fetch the context property just in case they are referring to the current search
                 const ctx = user.lastSearchContext?.location ? user.lastSearchContext : user;
-                aiContextProperties = await searchByQuery({
+                const { properties: ptList, matchTier } = await searchByQuery({
                     budget: ctx.budget, location: ctx.locationPreference || ctx.location, propertyType: ctx.propertyType
                 });
+                aiContextProperties = ptList;
 
                 history[history.length - 1].content += financialContext; // sneaky inject
-                responseMsg = await generateResponse(text, history, user, aiContextProperties);
+                responseMsg = await generateResponse(text, history, user, aiContextProperties, matchTier);
                 break;
             }
 

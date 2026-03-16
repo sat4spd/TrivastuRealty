@@ -32,7 +32,7 @@ const matchProperties = async (criteria) => {
 
     if (properties.length > 0) {
         logger.info(`🔍 Tier 1 match: ${properties.length} properties`);
-        return scoreAndRank(properties, criteria);
+        return { properties: scoreAndRank(properties, criteria), matchTier: 'strict' };
     }
 
     // ── TIER 2: Relax budget by 40% (keep location) ──
@@ -41,7 +41,7 @@ const matchProperties = async (criteria) => {
 
     if (properties.length > 0) {
         logger.info(`🔍 Tier 2 match (relaxed budget): ${properties.length} properties`);
-        return scoreAndRank(properties, criteria);
+        return { properties: scoreAndRank(properties, criteria), matchTier: 'relaxed_budget' };
     }
 
     // ── TIER 3: Location only (any budget, any type) ──
@@ -56,7 +56,7 @@ const matchProperties = async (criteria) => {
 
         if (properties.length > 0) {
             logger.info(`🔍 Tier 3 match (location only): ${properties.length} properties`);
-            return scoreAndRank(properties, criteria);
+            return { properties: scoreAndRank(properties, criteria), matchTier: 'location_only' };
         }
     }
 
@@ -65,7 +65,7 @@ const matchProperties = async (criteria) => {
         .sort({ createdAt: -1 }).limit(5).lean();
 
     logger.info(`🔍 Tier 4 match (latest): ${properties.length} properties`);
-    return scoreAndRank(properties, criteria);
+    return { properties: scoreAndRank(properties, criteria), matchTier: 'general' };
 };
 
 /**
