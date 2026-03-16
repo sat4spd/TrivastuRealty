@@ -12,46 +12,69 @@ const { OpenAI } = require('openai');
 const logger = require('../utils/logger');
 const { parsePhone } = require('../utils/helpers');
 const { s3Client } = require('../config/s3');
-const { PutObjectCommand } = require('@aws-sdk/client-s3');
+const { PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() }); // Parse files in memory
 
 // ── Template Header Image Cache ────────────────────────────────────────────────
-// Keeps a permanent S3 URL per template name so we only upload once per template.
-// Meta's CDN (scontent.whatsapp.net) URLs cannot be re-submitted as a link 
-// in the API send payload — only truly public HTTPS URLs are accepted.
-const templateHeaderPublicUrls = {};
+// Keeps a presigned S3 URL per template name.
+// Meta's CDN URLs cannot be re-submitted as a link in the API send payload.
+// We use 7-day (MAX) presigned URLs for S3 assets.
+const templateHeaderCache = {};
 
 async function getPublicHeaderUrl(templateName, cdnUrl) {
-    if (templateHeaderPublicUrls[templateName]) {
-        return templateHeaderPublicUrls[templateName];
+    const now = Date.now();
+    // Cache for 6 days (to be safe before 7-day expiry)
+    if (templateHeaderCache[templateName] && (now - templateHeaderCache[templateName].timestamp < 6 * 24 * 60 * 60 * 1000)) {
+        return templateHeaderCache[templateName].url;
     }
+    
     try {
-        // Download the image from WhatsApp CDN (requires no auth — it's a public CDN link)
-        const imageRes = await axios.get(cdnUrl, { responseType: 'arraybuffer', timeout: 10000 });
-        const buffer = Buffer.from(imageRes.data);
-        const contentType = imageRes.headers['content-type'] || 'image/png';
-        const ext = contentType.includes('jpeg') ? 'jpg' : 'png';
-        
-        // Upload to S3 under a dedicated folder
+        const ext = 'png'; // Fallback
         const key = `template-headers/${templateName}.${ext}`;
-        await s3Client.send(new PutObjectCommand({
-            Bucket: process.env.S3_BUCKET_PROPERTY_MEDIA,
-            Key: key,
-            Body: buffer,
-            ContentType: contentType,
-        }));
         
-        // Build the public S3 URL
-        const region = process.env.AWS_REGION;
-        const bucket = process.env.S3_BUCKET_PROPERTY_MEDIA;
-        const publicUrl = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
-        templateHeaderPublicUrls[templateName] = publicUrl;
-        logger.info(`[CAMPAIGNS] Cached header image for template '${templateName}': ${publicUrl}`);
-        return publicUrl;
+        let fileExists = false;
+        try {
+            // Check if we already have it in S3
+            const { HeadObjectCommand } = require('@aws-sdk/client-s3');
+            await s3Client.send(new HeadObjectCommand({
+                Bucket: process.env.S3_BUCKET_PROPERTY_MEDIA,
+                Key: key
+            }));
+            fileExists = true;
+        } catch (e) {
+            // Not found or error
+        }
+
+        if (!fileExists) {
+            // Download from CDN and upload to S3
+            const imageRes = await axios.get(cdnUrl, { responseType: 'arraybuffer', timeout: 15000 });
+            const buffer = Buffer.from(imageRes.data);
+            const contentType = imageRes.headers['content-type'] || 'image/png';
+            
+            await s3Client.send(new PutObjectCommand({
+                Bucket: process.env.S3_BUCKET_PROPERTY_MEDIA,
+                Key: key,
+                Body: buffer,
+                ContentType: contentType,
+            }));
+        }
+        
+        // Generate a 7-day presigned URL
+        const command = new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET_PROPERTY_MEDIA,
+            Key: key
+        });
+        
+        const signedUrl = await getSignedUrl(s3Client, command, { expiresIn: 604800 });
+        
+        templateHeaderCache[templateName] = { url: signedUrl, timestamp: now };
+        logger.info(`[CAMPAIGNS] Generated new 7-day presigned URL for template '${templateName}'`);
+        return signedUrl;
     } catch (err) {
-        logger.warn(`[CAMPAIGNS] Could not upload header image for '${templateName}': ${err.message}. Skipping header.`);
+        logger.warn(`[CAMPAIGNS] Could not get/upload header image for '${templateName}': ${err.message}.`);
         return null;
     }
 }
