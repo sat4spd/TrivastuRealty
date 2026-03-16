@@ -163,7 +163,7 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                             // 1. Body Text Variables Component
                             const body = tmplDef.components.find(c => c.type === 'BODY');
                             if (body && body.text) {
-                                const matches = body.text.match(/\{\{\d+\}\}/g);
+                                const matches = body.text.match(/\{\{[^}]+\}\}/g);
                                 if (matches) {
                                     const expectedParamsCount = Array.from(new Set(matches)).length;
                                     const bodyParams = [];
