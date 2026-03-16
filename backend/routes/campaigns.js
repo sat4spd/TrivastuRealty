@@ -139,6 +139,22 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
         (async () => {
             let sent = 0;
             let failed = 0;
+            
+            // Fetch template specs to avoid Param Mismatch (Error 132000)
+            let expectedParamsCount = 0;
+            if (messageType === 'template') {
+                try {
+                    const templates = await whatsappService.getTemplates();
+                    const tmpl = templates.find(t => t.name === messageText);
+                    if (tmpl) {
+                        const body = tmpl.components.find(c => c.type === 'BODY');
+                        if (body && body.text) {
+                            const matches = body.text.match(/\{\{\d+\}\}/g);
+                            if (matches) expectedParamsCount = Array.from(new Set(matches)).length;
+                        }
+                    }
+                } catch(e) { logger.warn("Could not pre-fetch template params count"); }
+            }
 
             for (const contact of contacts) {
                 // Check if campaign was stopped by admin midway
@@ -149,11 +165,21 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
 
                 try {
                     if (messageType === 'template') {
+                        // Prepare exact number of parameters Meta expects
+                        const params = [];
+                        if (expectedParamsCount >= 1) {
+                            params.push(contact.name || 'Customer'); // {{1}} is usually the Name
+                        }
+                        // If template expects MORE than 1 param, pad it so it doesn't crash 132000
+                        for (let i = 1; i < expectedParamsCount; i++) {
+                            params.push('Trivastu Realty'); // Fallback for {{m}}
+                        }
+
                         // Send Official Meta Template
                         await whatsappService.sendTemplate(
                             contact.phone,
-                            messageText, // holds the templateName
-                            [],          // param array (empty for standard standard templates)
+                            messageText, // templateName
+                            params,      // exactly matches required {{n}} count
                             true         // isBroadcast
                         );
                     } else {
