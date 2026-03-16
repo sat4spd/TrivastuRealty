@@ -115,7 +115,7 @@ router.get('/templates', auth, authorize('admin', 'manager'), async (req, res) =
 // ── 3. START CAMPAIGN (ASYNC BACKGROUND TASK) ──
 router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campaign'), async (req, res) => {
     try {
-        const { campaignName, contacts, messageText } = req.body;
+        const { campaignName, contacts, messageText, messageType } = req.body;
         
         if (!contacts || contacts.length === 0) return res.status(400).json({ error: 'Audience list is empty' });
         if (!messageText) return res.status(400).json({ error: 'Message content is required' });
@@ -148,24 +148,30 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                 }
 
                 try {
-                    // Personalize template (replace {{name}} if exists)
-                    let personalizedMsg = messageText;
-                    if (contact.name) {
-                        personalizedMsg = personalizedMsg.replace(/\{\{name\}\}/gi, contact.name);
+                    if (messageType === 'template') {
+                        // Send Official Meta Template
+                        await whatsappService.sendTemplate(
+                            contact.phone,
+                            messageText, // holds the templateName
+                            [],          // param array (empty for standard standard templates)
+                            true         // isBroadcast
+                        );
                     } else {
-                        personalizedMsg = personalizedMsg.replace(/\{\{name\}\}/gi, 'there');
-                    }
+                        // Personalize plain text AI message
+                        let personalizedMsg = messageText;
+                        if (contact.name) {
+                            personalizedMsg = personalizedMsg.replace(/\{\{name\}\}/gi, contact.name);
+                        } else {
+                            personalizedMsg = personalizedMsg.replace(/\{\{name\}\}/gi, 'there');
+                        }
 
-                    // Send WhatsApp Message (interactive buttons for better conversion/opt-out)
-                    await whatsappService.sendInteractiveButtons(
-                        contact.phone,
-                        personalizedMsg,
-                        [
-                            { id: 'marketing_interested', title: '✅ I am interested' },
-                            { id: 'marketing_optout', title: '🛑 Stop messages' }
-                        ],
-                        true // isBroadcast flag prevents automatic lead creation
-                    );
+                        // Send WhatsApp Message (Pure Text)
+                        await whatsappService.sendTextMessage(
+                            contact.phone,
+                            personalizedMsg,
+                            true         // isBroadcast flag prevents automatic lead creation
+                        );
+                    }
 
                     await CampaignLog.create({
                         campaignId,

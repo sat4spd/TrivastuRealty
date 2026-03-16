@@ -147,6 +147,7 @@ export default function MarketingCampaigns() {
       const payload = {
         campaignName,
         contacts: audienceData.contacts,
+        messageType,
         messageText: messageType === 'ai' ? messageContent : templateName
       };
 
@@ -383,12 +384,6 @@ export default function MarketingCampaigns() {
                     <div className={styles.phoneBody}>
                        <div className={styles.waMessage}>
                          {messageType === 'ai' ? (messageContent || <em>Generate a message...</em>) : <em>[Template rendering]</em>}
-                         {messageType === 'ai' && (
-                           <div className={styles.waButtons}>
-                             <div className={styles.waBtn}>✅ I am interested</div>
-                             <div className={styles.waBtn}>🛑 Stop messages</div>
-                           </div>
-                         )}
                        </div>
                     </div>
                   </div>

@@ -14,7 +14,7 @@ const api = axios.create({
 // WhatsApp API requires phone numbers WITHOUT '+' prefix
 const cleanPhone = (phone) => phone?.replace(/\+/g, '') || phone;
 
-const sendTextMessage = async (to, text) => {
+const sendTextMessage = async (to, text, isBroadcast = false) => {
     try {
         const response = await api.post('/messages', {
             messaging_product: 'whatsapp',
@@ -23,7 +23,7 @@ const sendTextMessage = async (to, text) => {
             text: { body: text },
         });
         logger.info(`Message sent to ${to}`);
-        logChat(to, 'outgoing', 'text', text);
+        logChat(to, 'outgoing', 'text', text, '', isBroadcast);
         return response.data;
     } catch (error) {
         logger.error('Failed to send text message:', error.response?.data || error.message);
@@ -81,7 +81,7 @@ const sendInteractiveList = async (to, bodyText, buttonText, sections) => {
     }
 };
 
-const sendTemplate = async (to, templateName, parameters = []) => {
+const sendTemplate = async (to, templateName, parameters = [], isBroadcast = false) => {
     try {
         const response = await api.post('/messages', {
             messaging_product: 'whatsapp',
@@ -96,6 +96,7 @@ const sendTemplate = async (to, templateName, parameters = []) => {
                 }] : [],
             },
         });
+        logChat(to, 'outgoing', 'template', `Template: ${templateName}`, '', isBroadcast);
         return response.data;
     } catch (error) {
         logger.error('Failed to send template:', error.response?.data || error.message);
