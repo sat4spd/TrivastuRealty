@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const xlsx = require('xlsx');
+const axios = require('axios');
 const { auth } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
 const { audit } = require('../middleware/audit');
@@ -10,9 +11,51 @@ const whatsappService = require('../services/whatsappService');
 const { OpenAI } = require('openai');
 const logger = require('../utils/logger');
 const { parsePhone } = require('../utils/helpers');
+const { s3Client } = require('../config/s3');
+const { PutObjectCommand } = require('@aws-sdk/client-s3');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() }); // Parse files in memory
+
+// ── Template Header Image Cache ────────────────────────────────────────────────
+// Keeps a permanent S3 URL per template name so we only upload once per template.
+// Meta's CDN (scontent.whatsapp.net) URLs cannot be re-submitted as a link 
+// in the API send payload — only truly public HTTPS URLs are accepted.
+const templateHeaderPublicUrls = {};
+
+async function getPublicHeaderUrl(templateName, cdnUrl) {
+    if (templateHeaderPublicUrls[templateName]) {
+        return templateHeaderPublicUrls[templateName];
+    }
+    try {
+        // Download the image from WhatsApp CDN (requires no auth — it's a public CDN link)
+        const imageRes = await axios.get(cdnUrl, { responseType: 'arraybuffer', timeout: 10000 });
+        const buffer = Buffer.from(imageRes.data);
+        const contentType = imageRes.headers['content-type'] || 'image/png';
+        const ext = contentType.includes('jpeg') ? 'jpg' : 'png';
+        
+        // Upload to S3 under a dedicated folder
+        const key = `template-headers/${templateName}.${ext}`;
+        await s3Client.send(new PutObjectCommand({
+            Bucket: process.env.S3_BUCKET_PROPERTY_MEDIA,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+        }));
+        
+        // Build the public S3 URL
+        const region = process.env.AWS_REGION;
+        const bucket = process.env.S3_BUCKET_PROPERTY_MEDIA;
+        const publicUrl = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+        templateHeaderPublicUrls[templateName] = publicUrl;
+        logger.info(`[CAMPAIGNS] Cached header image for template '${templateName}': ${publicUrl}`);
+        return publicUrl;
+    } catch (err) {
+        logger.warn(`[CAMPAIGNS] Could not upload header image for '${templateName}': ${err.message}. Skipping header.`);
+        return null;
+    }
+}
+
 
 // In-memory control flags for stopping campaigns
 const activeCampaigns = new Set();
@@ -172,21 +215,17 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                             const header = tmplDef.components.find(c => c.type === 'HEADER');
                             if (header) {
                                 const fmt = header.format; // IMAGE | VIDEO | DOCUMENT | TEXT
-                                if (fmt === 'IMAGE') {
-                                    const handle = header?.example?.header_handle?.[0];
-                                    if (handle) {
-                                        components.push({ type: 'header', parameters: [{ type: 'image', image: { link: handle } }] });
+                                const cdnHandle = header?.example?.header_handle?.[0];
+                                
+                                if ((fmt === 'IMAGE' || fmt === 'VIDEO' || fmt === 'DOCUMENT') && cdnHandle) {
+                                    // Meta's CDN URLs (scontent.whatsapp.net) cannot be re-submitted as a link.
+                                    // Download and re-upload to S3 to get a permanent public URL.
+                                    const mediaType = fmt.toLowerCase(); // 'image' | 'video' | 'document'
+                                    const publicUrl = await getPublicHeaderUrl(messageText, cdnHandle);
+                                    if (publicUrl) {
+                                        components.push({ type: 'header', parameters: [{ type: mediaType, [mediaType]: { link: publicUrl } }] });
                                     }
-                                } else if (fmt === 'VIDEO') {
-                                    const handle = header?.example?.header_handle?.[0];
-                                    if (handle) {
-                                        components.push({ type: 'header', parameters: [{ type: 'video', video: { link: handle } }] });
-                                    }
-                                } else if (fmt === 'DOCUMENT') {
-                                    const handle = header?.example?.header_handle?.[0];
-                                    if (handle) {
-                                        components.push({ type: 'header', parameters: [{ type: 'document', document: { link: handle } }] });
-                                    }
+                                    // If upload failed, we skip the header — Meta will use the template default image
                                 } else if (fmt === 'TEXT') {
                                     // Text headers may have variables like {{1}} or {{name}}
                                     const headerVars = header.text?.match(/\{\{[^}]+\}\}/g);
