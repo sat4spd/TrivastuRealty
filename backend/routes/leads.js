@@ -118,4 +118,39 @@ router.put('/:id/assign', auth, authorize('admin'), audit('assign', 'lead'), asy
     }
 });
 
+// POST /api/leads/whatsapp-initiate
+// Admin triggers a WhatsApp greeting to a customer to start their onboarding & lead creation
+router.post('/whatsapp-initiate', auth, authorize('admin'), async (req, res) => {
+    try {
+        const { phone, note } = req.body;
+        if (!phone) return res.status(400).json({ error: 'Phone number is required' });
+
+        const { parsePhone } = require('../utils/helpers');
+        const { handleNewCustomer } = require('../services/customerFlow');
+        const whatsappService = require('../services/whatsappService');
+
+        const normalizedPhone = parsePhone(phone);
+
+        // Fire the WhatsApp onboarding greeting
+        await handleNewCustomer(normalizedPhone);
+
+        // If admin added a personal note, send it as a second message with a slight delay
+        if (note && note.trim()) {
+            setTimeout(async () => {
+                try {
+                    await whatsappService.sendTextMessage(normalizedPhone,
+                        `📌 *Special Note from our team:*\n${note.trim()}`
+                    );
+                } catch (e) { /* non-critical */ }
+            }, 3000);
+        }
+
+        logger.info(`📲 Admin initiated WhatsApp lead for ${normalizedPhone}`);
+        res.json({ success: true, phone: normalizedPhone, message: 'WhatsApp greeting sent!' });
+    } catch (error) {
+        logger.error('WhatsApp initiate error:', error.message);
+        res.status(500).json({ error: error.message || 'Failed to initiate WhatsApp conversation' });
+    }
+});
+
 module.exports = router;

@@ -61,6 +61,7 @@ export const leadsAPI = {
     get: (id) => api.get(`/leads/${id}`),
     updateStatus: (id, status, data = {}) => api.put(`/leads/${id}/status`, { status, ...data }),
     assign: (id, agentId) => api.put(`/leads/${id}/assign`, { agentId }),
+    initiateWhatsApp: (phone, note) => api.post('/leads/whatsapp-initiate', { phone, note }),
 };
 
 export const broadcastAPI = {
