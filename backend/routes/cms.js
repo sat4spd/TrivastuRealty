@@ -109,7 +109,10 @@ router.post('/team', upload.any(), async (req, res) => {
         const data = await processUploads(req, { ...req.body });
         const member = await TeamMember.create(data);
         res.status(201).json(member);
-    } catch (e) { res.status(400).json({ error: e.message }); }
+    } catch (e) {
+        logger.error('CMS Team POST error:', e);
+        res.status(400).json({ error: e.message }); 
+    }
 });
 
 router.put('/team/:id', upload.any(), async (req, res) => {
@@ -117,7 +120,10 @@ router.put('/team/:id', upload.any(), async (req, res) => {
         const data = await processUploads(req, { ...req.body });
         const member = await TeamMember.findByIdAndUpdate(req.params.id, data, { new: true });
         res.json(member);
-    } catch (e) { res.status(400).json({ error: e.message }); }
+    } catch (e) {
+        logger.error('CMS Team PUT error:', e);
+        res.status(400).json({ error: e.message }); 
+    }
 });
 
 router.delete('/team/:id', async (req, res) => {
