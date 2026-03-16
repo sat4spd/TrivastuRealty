@@ -1,9 +1,17 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-import { Upload, Users, ShieldAlert, Sparkles, Send, Play, Square, Download, Activity, FileSpreadsheet, Check, X } from 'lucide-react';
+import api from '../../../lib/api';
+import { ShieldAlert, Send, Play, Square, Download, FileSpreadsheet, Check, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import styles from './campaigns.module.css';
+
+const TEMPLATES = [
+  { id: 'marketing_broadcast_1', label: 'General Marketing Offer (marketing_broadcast_1)' },
+  { id: 'site_visit_invitation', label: 'Site Visit Invitation (site_visit_invitation)' },
+  { id: 'new_project_launch', label: 'New Project Launch (new_project_launch)' },
+  { id: 'payment_reminder', label: 'Payment/Booking Reminder (payment_reminder)' },
+  { id: 'festive_offer', label: 'Festive Season Offer (festive_offer)' }
+];
 
 export default function MarketingCampaigns() {
   const [step, setStep] = useState(1);
@@ -38,7 +46,7 @@ export default function MarketingCampaigns() {
     if (activeCampaignId && (campaignStats.status === 'running' || campaignStats.status === 'pending')) {
       interval = setInterval(async () => {
         try {
-          const res = await axios.get('https://api.trivastu.com/api/campaigns', { withCredentials: true });
+          const res = await api.get('/campaigns');
           const current = res.data.find(c => c._id === activeCampaignId);
           if (current) {
             setCampaignStats({
@@ -62,10 +70,10 @@ export default function MarketingCampaigns() {
   const loadHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await axios.get('https://api.trivastu.com/api/campaigns', { withCredentials: true });
+      const res = await api.get('/campaigns');
       setCampaignHistory(res.data);
     } catch (e) {
-      console.error(e);
+      console.error("History load error", e);
     }
     setLoadingHistory(false);
   };
@@ -91,9 +99,8 @@ export default function MarketingCampaigns() {
     formData.append('file', selectedFile);
 
     try {
-      const res = await axios.post('https://api.trivastu.com/api/campaigns/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        withCredentials: true
+      const res = await api.post('/campaigns/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       setAudienceData(res.data);
       if (res.data.validContacts > 0) {
@@ -102,7 +109,7 @@ export default function MarketingCampaigns() {
         alert("No valid phone numbers found in the file.");
       }
     } catch (err) {
-      alert(err.response?.data?.error || "Error uploading file.");
+      alert(err.response?.data?.error || "Authentication or Upload error.");
     }
     setIsUploading(false);
   };
@@ -111,10 +118,10 @@ export default function MarketingCampaigns() {
     if (!aiPrompt) return;
     setIsGenerating(true);
     try {
-      const res = await axios.post('https://api.trivastu.com/api/campaigns/generate-ai', { prompt: aiPrompt }, { withCredentials: true });
+      const res = await api.post('/campaigns/generate-ai', { prompt: aiPrompt });
       setMessageContent(res.data.message);
     } catch (err) {
-      alert("AI Generation failed.");
+      alert("AI Generation failed. Check API key status or connectivity.");
     }
     setIsGenerating(false);
   };
@@ -131,13 +138,13 @@ export default function MarketingCampaigns() {
         messageText: messageType === 'ai' ? messageContent : templateName
       };
 
-      const res = await axios.post('https://api.trivastu.com/api/campaigns/start', payload, { withCredentials: true });
+      const res = await api.post('/campaigns/start', payload);
       
       setActiveCampaignId(res.data.campaignId);
       setCampaignStats({ sent: 0, failed: 0, total: audienceData.validContacts, status: 'running' });
       setStep(3);
     } catch (err) {
-      alert("Failed to start campaign.");
+      alert(err.response?.data?.error || "Failed to start campaign.");
     }
     setIsStarting(false);
   };
@@ -145,7 +152,7 @@ export default function MarketingCampaigns() {
   const handleStopCampaign = async () => {
     if (!activeCampaignId) return;
     try {
-      await axios.post(`https://api.trivastu.com/api/campaigns/stop/${activeCampaignId}`, {}, { withCredentials: true });
+      await api.post(`/campaigns/stop/${activeCampaignId}`);
       setCampaignStats(prev => ({ ...prev, status: 'stopped' }));
     } catch (err) {
       alert("Failed to stop campaign.");
@@ -153,7 +160,22 @@ export default function MarketingCampaigns() {
   };
 
   const handleDownloadReport = (id) => {
-    window.open(`https://api.trivastu.com/api/campaigns/report/${id}`, '_blank');
+    const token = localStorage.getItem('trivastu_token');
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.trivastu.com';
+    // Append token to window open URL since we can't send auth headers via window.open
+    // Or we can fetch blob and download. Since GET /api/admin/campaigns/report needs auth,
+    // let's do a fetch blob approach to properly inject Authorization header:
+    api.get(`/campaigns/report/${id}`, { responseType: 'blob' })
+      .then(response => {
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `Campaign_Report_${id}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      })
+      .catch(() => alert("Failed to download report."));
   };
 
   return (
@@ -317,13 +339,16 @@ export default function MarketingCampaigns() {
                       </>
                     ) : (
                       <div>
-                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 'bold', color: '#374151' }}>Meta Template Name</label>
-                        <input 
-                          type="text" 
+                        <label style={{ display: 'block', marginBottom: '8px', fontSize: '13px', fontWeight: 'bold', color: '#374151' }}>Meta Template</label>
+                        <select
                           value={templateName}
                           onChange={e => setTemplateName(e.target.value)}
-                          style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #D1D5DB' }}
-                        />
+                          style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #D1D5DB', backgroundColor: 'white' }}
+                        >
+                          {TEMPLATES.map(t => (
+                            <option key={t.id} value={t.id}>{t.label}</option>
+                          ))}
+                        </select>
                       </div>
                     )}
                   </div>
