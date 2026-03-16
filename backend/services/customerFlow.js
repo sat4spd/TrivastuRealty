@@ -2,7 +2,8 @@ const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Property = require('../models/Property');
 const whatsappService = require('./whatsappService');
-const { searchByQuery, formatPropertyList } = require('./matchingEngine');
+const { searchByQuery, formatPropertyList, sendPropertyInteractiveList } = require('./matchingEngine');
+
 const { notifyAdmin, ALERT_TYPES } = require('./notificationService');
 const { formatCurrency, parsePhone } = require('../utils/helpers');
 const {
@@ -351,15 +352,22 @@ const handleOnboardingStep = async (phone, text, user) => {
             };
             await user.save();
 
-            const completionMsg = `✅ *Registration Complete!*\n\n` +
-                `📋 *Your Profile:*\n` +
-                `👤 ${user.name}\n` +
-                `💰 ${formatCurrency(user.budget)}\n📍 ${user.locationPreference}\n🏠 ${user.propertyType}\n\n` +
-                (matches.length > 0
-                    ? `*Here are the best properties for you right now:*\n\n${formatPropertyList(matches)}\n\nReply with a property *number* to see full details or ask me anything else!`
-                    : `I'll alert my team and notify you when matching properties arrive. Let me know if you want to change any preferences or ask a question!`);
+            const completionMsg = `✅ *Registration Complete!*
 
+📋 *Your Profile:*
+👤 ${user.name}
+💰 ${formatCurrency(user.budget)}
+📍 ${user.locationPreference}
+🏠 ${user.propertyType}
+
+Great! Let me show you the best matching properties now 👇`;
             await sendAndSave(phone, user, completionMsg);
+
+            if (matches.length > 0) {
+                await sendPropertyInteractiveList(phone, matches);
+            } else {
+                await sendAndSave(phone, user, `I'll alert my team and notify you when matching properties arrive. Let me know if you want to change any preferences or ask a question!`);
+            }
             break;
         }
     }
@@ -369,6 +377,14 @@ const handleOnboardingStep = async (phone, text, user) => {
 // Used for all messages after onboarding is complete.
 const handleSmartMessage = async (phone, text, user) => {
     // 1. Interactive button clicks (id-based)
+    // Handle property_N taps from the interactive property list
+    const propertyTapMatch = text.match(/^property_(\d+)$/);
+    if (propertyTapMatch) {
+        // Treat as if user typed the number (property detail request)
+        const idx = propertyTapMatch[1];
+        return handleSmartMessage(phone, idx, user);
+    }
+
     if (text === 'view_my_matches') {
         const matches = await searchByQuery({
             budget: user.budget,
@@ -380,11 +396,11 @@ const handleSmartMessage = async (phone, text, user) => {
         user.lastSearchContext = { budget: user.budget, location: user.locationPreference, propertyType: user.propertyType, updatedAt: new Date() };
         await user.save();
 
-        const msg = matches.length > 0
-            ? `🏠 *Your Custom Matches:*\n\n${formatPropertyList(matches)}\n\nReply with a number for details!`
-            : `No exact matches for ${user.locationPreference} under ${formatCurrency(user.budget)}. Want to try a different location or budget?`;
-
-        await sendAndSave(phone, user, msg);
+        if (matches.length > 0) {
+            await sendPropertyInteractiveList(phone, matches);
+        } else {
+            await sendAndSave(phone, user, `No exact matches for ${user.locationPreference} under ${formatCurrency(user.budget)}. Want to try a different location or budget?`);
+        }
         return;
     }
 

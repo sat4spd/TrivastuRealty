@@ -185,4 +185,58 @@ const searchByQuery = async ({ location, budget, propertyType, bedrooms }) => {
     return matchProperties({ location, budget, propertyType, bedrooms });
 };
 
-module.exports = { matchProperties, formatPropertyList, searchByQuery, scoreAndRank };
+/**
+ * Send property list as a WhatsApp Interactive List Message
+ * Returns: true if sent as list, false if fell back to text
+ */
+const sendPropertyInteractiveList = async (toPhone, properties, headerText) => {
+    const whatsappService = require('./whatsappService');
+
+    if (!properties || properties.length === 0) {
+        await whatsappService.sendTextMessage(toPhone,
+            "🔍 No matching properties found right now. We'll notify you when new listings match your criteria! 🔔"
+        );
+        return true;
+    }
+
+    // Group into sections by type
+    const typeOrder = ['plot', 'land', 'commercial', 'apartment', 'villa', 'farmhouse'];
+    const typeLabel = { plot: '🌳 Plots', land: '🌾 Land', commercial: '🏪 Commercial', apartment: '🏢 Apartments', villa: '🏡 Villas', farmhouse: '🌻 Farmhouses' };
+    const grouped = {};
+    properties.forEach((p, i) => {
+        const key = p.type || 'other';
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push({ ...p, _idx: i + 1 });
+    });
+
+    const sections = [];
+    [...typeOrder, 'other'].forEach(type => {
+        if (!grouped[type] || grouped[type].length === 0) return;
+        sections.push({
+            title: typeLabel[type] || '🏠 Properties',
+            rows: grouped[type].map(p => ({
+                id: `property_${p._idx}`,
+                title: p.title.substring(0, 24),
+                description: `📍 ${p.location} | 💰 ${formatCurrency(p.price)} | 📐 ${p.area || '?'} ${p.unit || ''}${p.matchScore ? ` | ⭐${p.matchScore}%` : ''}`.substring(0, 72),
+            })),
+        });
+    });
+
+    try {
+        await whatsappService.sendInteractiveList(
+            toPhone,
+            headerText || `🏠 *Here are the best properties for you:*\n\nTap a property to view full details!`,
+            `📋 View Properties`,
+            sections
+        );
+        return true;
+    } catch (e) {
+        // Fallback to text
+        await whatsappService.sendTextMessage(toPhone,
+            `🏠 *Properties for you:*\n\n${formatPropertyList(properties)}\n\nReply with a number for full details!`
+        );
+        return false;
+    }
+};
+
+module.exports = { matchProperties, formatPropertyList, sendPropertyInteractiveList, searchByQuery, scoreAndRank };

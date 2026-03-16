@@ -20,6 +20,18 @@ const handleAdminMessage = async (phone, text, user) => {
         return handleAdminAddPropertyFlow(phone, text, user);
     }
 
+    // ── Handle interactive list reply IDs (from sendInteractiveList) ──
+    const interactiveMap = {
+        'admin_stats':        () => showStats(phone),
+        'admin_pending':      () => showPending(phone),
+        'admin_leads':        () => showRecentLeads(phone),
+        'admin_agents':       () => showAgentsList(phone),
+        'admin_properties':   () => showProperties(phone),
+        'admin_add_agent':    () => startAddAgent(phone, user),
+        'admin_add_property': () => startAddProperty(phone, user),
+    };
+    if (interactiveMap[lower]) return interactiveMap[lower]();
+
     // Parse natural language command with LLM
     const command = await parseAdminCommand(text);
 
@@ -56,7 +68,7 @@ const handleAdminMessage = async (phone, text, user) => {
         case 'menu': return showAdminMenu(phone);
     }
 
-    // Fallbacks (legacy manual triggers)
+    // Fallbacks (legacy manual triggers + 'menu' keyword)
     if (['hi', 'hello', 'menu', 'start', 'hey'].includes(lower)) return showAdminMenu(phone);
     if (lower === '1') return showStats(phone);
     if (lower === '2') return showPending(phone);
@@ -85,21 +97,37 @@ const handleAdminMessage = async (phone, text, user) => {
 
 // ── ADMIN MENU ──
 const showAdminMenu = async (phone) => {
-    await whatsappService.sendTextMessage(phone,
-        `👑 *ADMIN PANEL — Trivastu Realty*\n\n` +
-        `Type a number or ask naturally:\n\n` +
-        `1️⃣ *stats* — Dashboard overview\n` +
-        `2️⃣ *pending* — Pending approvals\n` +
-        `3️⃣ *leads* — Recent leads\n` +
-        `4️⃣ *agents* — View all agents\n` +
-        `5️⃣ *add agent* — Register new agent\n` +
-        `6️⃣ *properties* — View properties\n` +
-        `7️⃣ *add property* — Add new property\n\n` +
-        `📋 *Advanced Commands:*\n` +
-        `• _update property <ID> price 45L_\n` +
-        `• _update lead <ID> contacted_\n` +
-        `• _search customer <phone>_`
-    );
+    try {
+        await whatsappService.sendInteractiveList(
+            phone,
+            `🔑 *Admin Dashboard*\n\nWelcome, Admin! Choose an action:`,
+            `⚙️ Admin Menu`,
+            [{
+                title: 'Quick Actions',
+                rows: [
+                    { id: 'admin_stats',       title: 'Dashboard Stats',    description: 'View key metrics & pipeline overview' },
+                    { id: 'admin_pending',      title: 'Pending Items',      description: 'Agents & properties to review' },
+                    { id: 'admin_leads',        title: 'Recent Leads',       description: 'View latest customer leads' },
+                    { id: 'admin_agents',       title: 'Agent List',         description: 'View all registered agents' },
+                    { id: 'admin_properties',   title: 'Properties',         description: 'View all listed properties' },
+                ],
+            }, {
+                title: 'Manage',
+                rows: [
+                    { id: 'admin_add_agent',    title: 'Add New Agent',      description: 'Register a new sales agent' },
+                    { id: 'admin_add_property', title: 'Add Property',       description: 'List a new property' },
+                ],
+            }]
+        );
+    } catch (e) {
+        // Fallback for clients that don't support list messages
+        await whatsappService.sendTextMessage(phone,
+            `👑 *ADMIN PANEL — Trivastu Realty*\n\nType a command:\n\n` +
+            `• *stats* — Dashboard overview\n• *pending* — Pending approvals\n• *leads* — Recent leads\n` +
+            `• *agents* — View all agents\n• *add agent* — Register new agent\n` +
+            `• *properties* — View properties\n• *add property* — Add new property`
+        );
+    }
 };
 
 // ... (stats, pending, leads, agents blocks remain mostly unchanged) ...

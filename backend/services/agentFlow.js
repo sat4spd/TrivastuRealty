@@ -149,6 +149,16 @@ const handleApprovedAgent = async (phone, text, user, agent) => {
         return handleAgentAddPropertyFlow(phone, text, user, agent);
     }
 
+    // ── Interactive list reply ID mappings ──
+    const interactiveMap = {
+        'agent_leads':        () => showAgentLeads(phone, agent),
+        'agent_properties':   () => showAgentProperties(phone, agent),
+        'agent_commission':   () => showAgentCommission(phone, agent),
+        'agent_profile':      () => showAgentProfile(phone, agent),
+        'agent_add_property': () => startAgentAddProperty(phone, user),
+    };
+    if (interactiveMap[lower]) return interactiveMap[lower]();
+
     if (['hi', 'hello', 'menu', 'start', 'hey'].includes(lower)) {
         return showAgentMenu(phone, agent);
     }
@@ -172,16 +182,33 @@ const handleApprovedAgent = async (phone, text, user, agent) => {
 
 // ── AGENT MENU ──
 const showAgentMenu = async (phone, agent) => {
-    await whatsappService.sendTextMessage(phone,
-        `👨‍💼 *Agent Dashboard — ${agent.name}*\n\n` +
-        `Type a command:\n\n` +
-        `1️⃣ *my leads* — View assigned leads\n` +
-        `2️⃣ *add property* — Submit new property\n` +
-        `3️⃣ *my properties* — View your properties\n` +
-        `4️⃣ *commission* — Check earnings\n` +
-        `5️⃣ *profile* — Your profile\n\n` +
-        `📋 Quick: _update lead <leadID> <status>_`
-    );
+    try {
+        await whatsappService.sendInteractiveList(
+            phone,
+            `👨‍💼 *Agent Dashboard — ${agent.name}*\n\nWhat would you like to do?`,
+            `📋 Agent Menu`,
+            [{
+                title: 'My Work',
+                rows: [
+                    { id: 'agent_leads',       title: 'My Assigned Leads',   description: 'View & manage your customer leads' },
+                    { id: 'agent_properties',  title: 'My Properties',       description: 'View properties you submitted' },
+                    { id: 'agent_commission',  title: 'My Commission',       description: 'Check earnings & commission history' },
+                    { id: 'agent_profile',     title: 'My Profile',          description: 'View your profile & performance' },
+                ],
+            }, {
+                title: 'Actions',
+                rows: [
+                    { id: 'agent_add_property', title: 'Submit New Property', description: 'Add a new property for approval' },
+                ],
+            }]
+        );
+    } catch (e) {
+        await whatsappService.sendTextMessage(phone,
+            `👨‍💼 *Agent Dashboard — ${agent.name}*\n\n` +
+            `• *my leads* — View assigned leads\n• *add property* — Submit new property\n` +
+            `• *my properties* — Your properties\n• *commission* — Earnings\n• *profile* — Your profile`
+        );
+    }
 };
 
 // ── AGENT: VIEW LEADS ──
