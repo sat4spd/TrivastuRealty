@@ -160,8 +160,20 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                     if (messageType === 'template') {
                         const components = [];
 
+                            // 0. Header Image Component (required even for static images)
+                            const header = tmplDef ? tmplDef.components.find(c => c.type === 'HEADER') : null;
+                            if (header && header.format === 'IMAGE') {
+                                const headerHandle = header?.example?.header_handle?.[0];
+                                if (headerHandle) {
+                                    components.push({
+                                        type: 'header',
+                                        parameters: [{ type: 'image', image: { link: headerHandle } }]
+                                    });
+                                }
+                            }
+
                             // 1. Body Text Variables Component
-                            const body = tmplDef.components.find(c => c.type === 'BODY');
+                            const body = tmplDef ? tmplDef.components.find(c => c.type === 'BODY') : null;
                             if (body && body.text) {
                                 const matches = body.text.match(/\{\{[^}]+\}\}/g);
                                 if (matches) {
