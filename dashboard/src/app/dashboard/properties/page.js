@@ -56,7 +56,8 @@ export default function PropertiesPage() {
         try {
             const params = filter ? { status: filter } : {};
             const res = await propertiesAPI.list(params);
-            setProperties(res.data.properties || []);
+            const allProps = Array.isArray(res.data) ? res.data : (res.data?.properties || []);
+            setProperties(allProps);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
     };
