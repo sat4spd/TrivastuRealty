@@ -146,7 +146,13 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                 try {
                     const templates = await whatsappService.getTemplates();
                     tmplDef = templates.find(t => t.name === messageText);
-                } catch(e) { logger.warn("Could not pre-fetch template params count"); }
+                    logger.info(`[CAMPAIGN DEBUG] tmplDef found: ${!!tmplDef}, template: ${messageText}, total fetched: ${templates.length}`);
+                    if (tmplDef) {
+                        logger.info(`[CAMPAIGN DEBUG] parameter_format: ${tmplDef.parameter_format}, components: ${JSON.stringify(tmplDef.components.map(c => c.type + '|' + c.format))}`);
+                    }
+                } catch(e) { 
+                    logger.warn(`[CAMPAIGN DEBUG] Could not pre-fetch template: ${e.message}`); 
+                }
             }
 
             for (const contact of contacts) {
@@ -225,6 +231,7 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                             }
                         }
                         // If tmplDef couldn't be fetched → send with empty components (works for all-static templates)
+                        logger.info(`[CAMPAIGN DEBUG] Final components: ${JSON.stringify(components)}`);
                         // Send Official Meta Template
                         await whatsappService.sendTemplate(
                             contact.phone,
