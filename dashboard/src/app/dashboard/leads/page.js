@@ -31,10 +31,38 @@ export default function LeadsPage() {
                 leadsAPI.list(params),
                 agentsAPI.list({ status: 'approved' }),
             ]);
-            setLeads(leadsRes.data.leads || []);
-            setAgents(agentsRes.data.agents || []);
+            const leadsData = Array.isArray(leadsRes.data) ? leadsRes.data : (leadsRes.data?.leads || []);
+            const agentsData = Array.isArray(agentsRes.data) ? agentsRes.data : (agentsRes.data?.agents || []);
+            setLeads(leadsData);
+            setAgents(agentsData);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
+    };
+
+    const downloadCSV = () => {
+        const headers = ['Date', 'Name', 'Phone', 'Budget (₹)', 'Location', 'Type', 'Status', 'Agent', 'Source', 'AI Score'];
+        const rows = leads.map(l => [
+            new Date(l.createdAt || Date.now()).toLocaleDateString('en-IN'),
+            l.customerId?.name || 'Unknown',
+            l.customerId?.phone || '-',
+            l.budget || 0,
+            l.location || '-',
+            l.propertyType || '-',
+            l.status || 'new',
+            l.agentId?.name || 'Unassigned',
+            l.source || 'whatsapp',
+            l.aiScore || '-',
+        ]);
+        const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `trivastu-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     };
 
     const updateStatus = async (leadId, status, data = {}) => {
@@ -78,6 +106,10 @@ export default function LeadsPage() {
                     <h2>Lead Management</h2>
                     <p>{leads.length} total leads</p>
                 </div>
+                <button className="btn btn-outline" onClick={downloadCSV} disabled={leads.length === 0}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⬇️ Download CSV
+                </button>
             </div>
 
             <div className="tabs">
