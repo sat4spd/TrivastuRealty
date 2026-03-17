@@ -137,7 +137,9 @@ export default function MarketingCampaigns() {
       setAiBranding(res.data);
       setMessageContent(res.data.body || res.data.message || '');
     } catch (err) {
-      alert("AI Generation failed. Check API key status or connectivity.");
+      console.error("AI Gen Error:", err.response?.data || err);
+      const errMsg = err.response?.data?.error || "AI Generation failed. Check API key status or connectivity.";
+      alert(errMsg);
     }
     setIsGenerating(false);
   };
