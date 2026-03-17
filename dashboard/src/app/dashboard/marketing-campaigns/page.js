@@ -23,6 +23,8 @@ export default function MarketingCampaigns() {
   const [aiPrompt, setAiPrompt] = useState('Write a 2-sentence WhatsApp message inviting clients to visit Sunrise Villas this weekend. Offer a 10% discount on spot booking.');
   const [isGenerating, setIsGenerating] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  // AI generated branding object
+  const [aiBranding, setAiBranding] = useState(null);
 
   // Fetch Meta Templates
   useEffect(() => {
@@ -131,7 +133,9 @@ export default function MarketingCampaigns() {
     setIsGenerating(true);
     try {
       const res = await api.post('/campaigns/generate-ai', { prompt: aiPrompt });
-      setMessageContent(res.data.message);
+      // New structured response with header/body/footer/buttons
+      setAiBranding(res.data);
+      setMessageContent(res.data.body || res.data.message || '');
     } catch (err) {
       alert("AI Generation failed. Check API key status or connectivity.");
     }
@@ -148,7 +152,9 @@ export default function MarketingCampaigns() {
         campaignName,
         contacts: audienceData.contacts,
         messageType,
-        messageText: messageType === 'ai' ? messageContent : templateName
+        messageText: messageType === 'ai' ? messageContent : templateName,
+        // Pass branding for AI messages so backend can send interactive format
+        aiBranding: messageType === 'ai' ? aiBranding : null
       };
 
       const res = await api.post('/campaigns/start', payload);
@@ -382,8 +388,33 @@ export default function MarketingCampaigns() {
                       </div>
                     </div>
                     <div className={styles.phoneBody}>
-                       <div className={styles.waMessage}>
-                         {messageType === 'ai' ? (messageContent || <em>Generate a message...</em>) : <em>[Template rendering]</em>}
+                       <div className={styles.waMessage} style={{ padding: 0, overflow: 'hidden' }}>
+                         {messageType === 'ai' && aiBranding ? (
+                           <>
+                             {/* Header */}
+                             <div style={{ background: '#1a3c5e', color: 'white', padding: '8px 12px', fontSize: '12px', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+                               🏢 {aiBranding.header || 'TRIVASTU REALTY'}
+                             </div>
+                             {/* Body */}
+                             <div style={{ padding: '10px 12px', fontSize: '13px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                               {aiBranding.body}
+                             </div>
+                             {/* Footer */}
+                             <div style={{ padding: '4px 12px 8px', fontSize: '11px', color: '#888', borderBottom: '1px solid #eee' }}>
+                               {aiBranding.footer}
+                             </div>
+                             {/* CTA Buttons */}
+                             {aiBranding.buttons?.map((btn, i) => (
+                               <div key={i} style={{ padding: '8px 12px', borderTop: i === 0 ? 'none' : '1px solid #eee', textAlign: 'center', color: '#1a8cff', fontSize: '13px', fontWeight: '600', cursor: 'default' }}>
+                                 {btn.type === 'url' ? '🌐' : '📞'} {btn.text}
+                               </div>
+                             ))}
+                           </>
+                         ) : messageType === 'ai' ? (
+                           <div style={{ padding: '12px' }}><em style={{ color: '#aaa' }}>Generate a message to see preview...</em></div>
+                         ) : (
+                           <div style={{ padding: '12px' }}><em>[Template preview — see WhatsApp Manager]</em></div>
+                         )}
                        </div>
                     </div>
                   </div>

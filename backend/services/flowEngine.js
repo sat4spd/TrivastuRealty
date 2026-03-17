@@ -80,12 +80,13 @@ const processMessage = async (phone, message, messageId) => {
                 if (text.toLowerCase() === 'register as agent' || text.toLowerCase() === 'agent registration') {
                     await handleAgentRegistration(normalizedPhone);
                 } else {
-                    await handleNewCustomer(normalizedPhone);
+                    // Pass actual message text so ARIA can answer their question first
+                    await handleNewCustomer(normalizedPhone, text);
                 }
                 break;
 
             default:
-                await handleNewCustomer(normalizedPhone);
+                await handleNewCustomer(normalizedPhone, text);
         }
 
         // Update last interaction

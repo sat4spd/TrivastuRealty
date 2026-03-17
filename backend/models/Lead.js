@@ -12,7 +12,7 @@ const leadSchema = new mongoose.Schema({
     budget: { type: Number, default: 0 },
     location: { type: String, default: '' },
     propertyType: { type: String, default: '' },
-    source: { type: String, enum: ['whatsapp', 'dashboard', 'referral', 'broadcast'], default: 'whatsapp' },
+    source: { type: String, enum: ['whatsapp', 'dashboard', 'referral', 'broadcast', 'campaign_reply'], default: 'whatsapp' },
     notes: [{
         text: String,
         addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -26,6 +26,11 @@ const leadSchema = new mongoose.Schema({
     aiScore: { type: Number, default: 0, min: 0, max: 100 },
     urgency: { type: String, enum: ['low', 'medium', 'high', 'immediate'], default: 'low' },
     buyerPersona: { type: String, enum: ['investor', 'end_user', 'undecided'], default: 'undecided' },
+
+    // Freeze timer fields — admin notified only after 10 min of silence
+    pendingInfo: { type: Boolean, default: false }, // True = awaiting freeze timer before notifying admin
+    adminNotified: { type: Boolean, default: false }, // True = admin has been notified
+    initialMessage: { type: String, default: '' }, // First message the user sent us
 }, { timestamps: true });
 
 leadSchema.index({ status: 1 });

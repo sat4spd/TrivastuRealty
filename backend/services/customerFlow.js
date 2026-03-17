@@ -68,9 +68,10 @@ const handleCustomerImage = async (phone, imageBuffer, user) => {
     }
 };
 
-// ── NEW CUSTOMER: First-time greeting ──
-const handleNewCustomer = async (phone) => {
+// ── NEW CUSTOMER: First-time greeting with Freeze Timer ──
+const handleNewCustomer = async (phone, initialMessage = '') => {
     const normalizedPhone = parsePhone(phone);
+    const { ensurePendingLead, startFreezeTimer } = require('./leadFreezeService');
 
     let user = await User.findOne({ phone: normalizedPhone });
     if (!user) {
@@ -79,18 +80,50 @@ const handleNewCustomer = async (phone) => {
             role: 'customer',
             conversationState: { flow: 'onboarding', step: STEPS.ASK_NAME, data: {} },
         });
-    } else {
+    } else if (!user.conversationState?.step) {
         user.conversationState = { flow: 'onboarding', step: STEPS.ASK_NAME, data: {} };
         await user.save();
     }
 
-    const welcomeMsg = `🏠 *Welcome to Trivastu Realty!* 🏠\n\nWe're one of the fastest-growing real estate companies in Jharkhand, helping you find your dream property.\n\nI'm ARIA, your personal AI assistant.\n\nTo get started, please tell me your *full name*? 👤`;
+    // Silently create a partial lead + start 10-min freeze timer before admin notification
+    await ensurePendingLead(normalizedPhone, initialMessage, 'whatsapp');
 
-    user.addToHistory('assistant', welcomeMsg);
-    await user.save();
+    // If user asked something specific (not a generic greeting), answer it first
+    const lower = initialMessage.toLowerCase().trim();
+    const isGenericGreeting = !initialMessage || ['hi', 'hello', 'hey', 'hlo', 'namaste', 'start', ''].includes(lower);
 
-    await whatsappService.sendTextMessage(normalizedPhone, welcomeMsg);
+    if (!isGenericGreeting && initialMessage.length > 5) {
+        // They asked a real question — answer it naturally, THEN casually ask name
+        const intent = await detectIntent(initialMessage, user.conversationHistory || []);
+
+        // Generate a natural language response to their question
+        const aiResponse = await generateResponse(
+            `You are ARIA, a friendly AI assistant for Trivastu Realty in Jharkhand. ` +
+            `A new user just messaged: "${initialMessage}". ` +
+            `Answer their question helpfully and naturally in the same language they used (Hindi or English). ` +
+            `End with casually asking for their name in a friendly way. ` +
+            `Keep it concise, under 120 words. Include relevant emojis.`,
+            user.conversationHistory || []
+        );
+
+        user.addToHistory('user', initialMessage);
+        user.addToHistory('assistant', aiResponse);
+        user.conversationState = { flow: 'onboarding', step: STEPS.ASK_NAME, data: {} };
+        await user.save();
+
+        await whatsappService.sendTextMessage(normalizedPhone, aiResponse);
+    } else {
+        // Generic greeting — use standard welcome
+        const welcomeMsg = `🏠 *Welcome to Trivastu Realty!* 🏠\n\nWe're one of the fastest-growing real estate companies in Jharkhand, helping you find your dream property.\n\nI'm ARIA, your personal AI assistant. To get started, please tell me your *full name*? 👤`;
+
+        user.addToHistory('assistant', welcomeMsg);
+        user.conversationState = { flow: 'onboarding', step: STEPS.ASK_NAME, data: {} };
+        await user.save();
+
+        await whatsappService.sendTextMessage(normalizedPhone, welcomeMsg);
+    }
 };
+
 
 // ── RETURNING CUSTOMER ──
 const handleReturningCustomer = async (phone, user) => {

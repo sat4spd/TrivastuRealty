@@ -9,10 +9,10 @@ const setSocketIO = (socket) => {
 
 const logChat = async (phone, direction, type, content, mediaUrl = '', isBroadcast = false) => {
     try {
-        // Find user role (creates a Lead if customerFlow intercepts it later, but we just want the role here)
+        // Find user role
         const { role } = await detectRole(phone);
 
-        // Save to DB
+        // Save to DB (always — for analytics and history)
         const msg = await ChatMessage.create({
             phone,
             direction,
@@ -20,12 +20,13 @@ const logChat = async (phone, direction, type, content, mediaUrl = '', isBroadca
             content,
             mediaUrl,
             role,
-            isBroadcast, // Flag to hide from active CRM Inbox or prevent lead triggers if needed
+            isBroadcast,
             timestamp: new Date()
         });
 
-        // Emit to Dashboard connected via Socket.io
-        if (io) {
+        // Only emit to Live Chat dashboard for non-broadcast messages
+        // Campaign messages are stored for analytics but should NOT flood Live Chat
+        if (io && !isBroadcast) {
             io.emit('new_chat_message', msg);
         }
     } catch (err) {

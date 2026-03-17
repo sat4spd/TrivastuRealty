@@ -4,10 +4,12 @@ const ChatMessage = require('../models/ChatMessage');
 const { auth } = require('../middleware/auth');
 const { authorize } = require('../middleware/rbac');
 
-// Get all active chats (grouped by phone)
+// Get all active chats (grouped by phone) — excludes campaign broadcast messages
 router.get('/sessions', auth, authorize('admin'), async (req, res) => {
     try {
         const sessions = await ChatMessage.aggregate([
+            // Only include real conversation messages (not campaign blasts)
+            { $match: { isBroadcast: { $ne: true } } },
             { $sort: { timestamp: -1 } },
             {
                 $group: {
@@ -28,10 +30,13 @@ router.get('/sessions', auth, authorize('admin'), async (req, res) => {
     }
 });
 
-// Get chat history for a specific phone number
+// Get chat history for a specific phone number — show real messages in timeline, mark broadcasts separately
 router.get('/:phone', auth, authorize('admin'), async (req, res) => {
     try {
-        const messages = await ChatMessage.find({ phone: req.params.phone })
+        const messages = await ChatMessage.find({ 
+            phone: req.params.phone,
+            isBroadcast: { $ne: true }  // Exclude campaign blasts from chat thread
+        })
             .sort({ timestamp: 1 })
             .limit(500);
 

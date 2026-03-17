@@ -149,7 +149,7 @@ router.post('/generate-ai', auth, authorize('admin', 'manager'), async (req, res
             messages: [
                 {
                     role: "system",
-                    content: "You are an elite, high-converting real estate marketing copywriter for Trivastu Realty. Combine premium luxury language with urgent FOMO. Write a highly persuasive WhatsApp broadcast message based on the user's prompt. Rules: 1. Keep it under 60 words for quick reading. 2. Use strategic grouping of matching emojis (e.g. 🏢✨). 3. Use bold formatting *like this* for prices, locations, and the core offer. 4. Focus strictly on benefits (ROI, lifestyle, savings). 5. End with a very clear, low-friction Call To Action to reply or click 'I am interested'. Do NOT use brackets like [Name] or [Link]. Make it sound remarkably human and highly exclusive."
+                    content: "You are an elite, high-converting real estate marketing copywriter for Trivastu Realty. Combine premium luxury language with urgent FOMO. Write a highly persuasive WhatsApp broadcast message based on the user's prompt. Rules: 1. Keep it under 60 words for quick reading. 2. Use strategic grouping of matching emojis (e.g. 🏢✨). 3. Use bold formatting *like this* for prices, locations, and the core offer. 4. Focus strictly on benefits (ROI, lifestyle, savings). 5. End with a very clear, low-friction Call To Action to reply or click 'I am interested'. Do NOT use brackets like [Name] or [Link]. Make it sound remarkably human and highly exclusive. Do NOT include a header, footer, or buttons — those are added automatically."
                 },
                 {
                     role: "user",
@@ -160,12 +160,26 @@ router.post('/generate-ai', auth, authorize('admin', 'manager'), async (req, res
             max_tokens: 250,
         });
 
-        res.json({ message: response.choices[0].message.content });
+        const bodyText = response.choices[0].message.content;
+
+        // Default Trivastu branding added automatically to every AI-generated campaign message
+        const defaultBranding = {
+            header: 'TRIVASTU REALTY',
+            body: bodyText,
+            footer: 'Reply INFO for details.',
+            buttons: [
+                { type: 'url', text: 'Visit Website', url: 'http://trivastu.com' },
+                { type: 'phone_number', text: 'Call Us', phone_number: '+917481824888' }
+            ]
+        };
+
+        res.json(defaultBranding);
     } catch (error) {
         logger.error('AI generation error:', error);
         res.status(500).json({ error: 'Failed to generate AI message' });
     }
 });
+
 
 // ── 2.5 GET META TEMPLATES ──
 router.get('/templates', auth, authorize('admin', 'manager'), async (req, res) => {
@@ -181,7 +195,7 @@ router.get('/templates', auth, authorize('admin', 'manager'), async (req, res) =
 // ── 3. START CAMPAIGN (ASYNC BACKGROUND TASK) ──
 router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campaign'), async (req, res) => {
     try {
-        const { campaignName, contacts, messageText, messageType, mediaUrl } = req.body;
+        const { campaignName, contacts, messageText, messageType, mediaUrl, aiBranding } = req.body;
         
         if (!contacts || contacts.length === 0) return res.status(400).json({ error: 'Audience list is empty' });
         if (!messageText) return res.status(400).json({ error: 'Message content is required' });
@@ -310,12 +324,30 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                             personalizedMsg = personalizedMsg.replace(/\{\{name\}\}/gi, 'there');
                         }
 
-                        // Send WhatsApp Message (Pure Text)
-                        await whatsappService.sendTextMessage(
-                            contact.phone,
-                            personalizedMsg,
-                            true         // isBroadcast flag prevents automatic lead creation
-                        );
+                        // If aiBranding is provided (structured message with buttons), send as interactive
+                        if (aiBranding && aiBranding.buttons && aiBranding.buttons.length > 0) {
+                            const headerText = aiBranding.header ? `🏢 *${aiBranding.header}*\n\n` : '';
+                            const footerText = aiBranding.footer ? `\n\n_${aiBranding.footer}_` : '';
+                            const fullBody = `${headerText}${personalizedMsg}${footerText}`;
+
+                            // Send with interactive buttons
+                            await whatsappService.sendInteractiveButtons(
+                                contact.phone,
+                                fullBody,
+                                [
+                                    { id: 'visit_website', title: '🌐 Visit Website' },
+                                    { id: 'call_us', title: '📞 Call Us' }
+                                ],
+                                true  // isBroadcast
+                            );
+                        } else {
+                            // Send WhatsApp Message (Pure Text fallback)
+                            await whatsappService.sendTextMessage(
+                                contact.phone,
+                                personalizedMsg,
+                                true  // isBroadcast flag
+                            );
+                        }
                     }
 
                     await CampaignLog.create({

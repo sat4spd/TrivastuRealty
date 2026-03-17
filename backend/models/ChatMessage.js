@@ -7,6 +7,7 @@ const chatMessageSchema = new mongoose.Schema({
     content: { type: String, default: '' },
     mediaUrl: { type: String, default: '' },
     role: { type: String, enum: ['admin', 'approved_agent', 'pending_agent', 'customer', 'new_user', 'system'], required: true },
+    isBroadcast: { type: Boolean, default: false }, // Campaign messages — saved for analytics but hidden from Live Chat
     timestamp: { type: Date, default: Date.now }
 });
 
