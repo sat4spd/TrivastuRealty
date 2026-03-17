@@ -1,11 +1,16 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { processMessage, processMediaMessage, processVoiceMessage } = require('../services/flowEngine');
 const whatsappConfig = require('../config/whatsapp');
 const whatsappService = require('../services/whatsappService');
 const logger = require('../utils/logger');
 const CampaignLog = require('../models/CampaignLog');
+const OptOut = require('../models/OptOut');
 const Lead = require('../models/Lead');
+
+// Opt-out trigger phrases (Hindi + English)
+const OPT_OUT_PHRASES = ['stop', 'unsubscribe', 'opt out', 'optout', 'hatao', 'band karo', 'mat bhejo', 'no more', 'remove me', 'block'];
 
 // Webhook verification (GET)
 router.get('/', (req, res) => {
@@ -25,6 +30,24 @@ router.get('/', (req, res) => {
 // Incoming messages (POST)
 router.post('/', async (req, res) => {
     try {
+        // ── SECURITY: Verify Meta webhook signature ──────────────────────────────
+        const appSecret = process.env.WHATSAPP_APP_SECRET;
+        if (appSecret) {
+            const sigHeader = req.headers['x-hub-signature-256'];
+            if (!sigHeader) {
+                logger.warn('⚠️ Webhook request missing signature — rejected');
+                return res.sendStatus(403);
+            }
+            const expected = 'sha256=' + crypto
+                .createHmac('sha256', appSecret)
+                .update(JSON.stringify(req.body))
+                .digest('hex');
+            if (sigHeader !== expected) {
+                logger.warn('❌ Webhook signature mismatch — possible spoofed request');
+                return res.sendStatus(403);
+            }
+        }
+
         // Respond immediately to Meta (must respond within 5 seconds)
         res.sendStatus(200);
 
@@ -55,6 +78,28 @@ router.post('/', async (req, res) => {
                         case 'text': {
                             const text = message.text?.body || '';
                             if (text) {
+                                // ── OPT-OUT DETECTION ──
+                                const lowerText = text.toLowerCase().trim();
+                                if (OPT_OUT_PHRASES.some(phrase => lowerText === phrase || lowerText.startsWith(phrase))) {
+                                    logger.info(`🚫 Opt-out triggered by ${phone}: "${text}"`);
+                                    OptOut.findOneAndUpdate(
+                                        { phone },
+                                        { phone, reason: 'user_request', addedAt: new Date() },
+                                        { upsert: true, new: true }
+                                    ).catch(err => logger.error('Failed to save opt-out:', err.message));
+
+                                    // Send confirmation & stop processing
+                                    whatsappService.sendTextMessage(phone, "We have noted your preference. You will not receive further marketing messages from Trivastu Realty. 🙏").catch(() => {});
+                                    break;
+                                }
+
+                                // ── CHECK IF USER IS OPTED OUT BEFORE PROCESSING ──
+                                const isOptedOut = await OptOut.findOne({ phone });
+                                if (isOptedOut) {
+                                    logger.info(`⏭️ Ignored message from opted-out user ${phone}`);
+                                    break;
+                                }
+
                                 processMessage(phone, text, messageId).catch(err => {
                                     logger.error('Text message processing error:', err.message);
                                 });

@@ -112,6 +112,29 @@ const handleNewCustomer = async (phone, initialMessage = '') => {
         await user.save();
 
         await whatsappService.sendTextMessage(normalizedPhone, aiResponse);
+
+        // ── INTENT-BASED INSTANT PROMOTION ──
+        // If they already gave us budget/location in message 1, don't wait 10 mins. Promote immediately!
+        const { extractEntities } = require('./llmService');
+        const entities = await extractEntities(initialMessage);
+        
+        if (entities.budget || entities.location || entities.propertyType) {
+            const { updatePendingLead, promoteLeadToAdmin, cancelFreezeTimer } = require('./leadFreezeService');
+            
+            logger.info(`🔥 High Intent Detected in first message from ${normalizedPhone}. Promoting lead instantly.`);
+            
+            // Update the pending lead with the extracted info
+            await updatePendingLead(normalizedPhone, {
+                budget: entities.budget,
+                location: entities.location,
+                propertyType: entities.propertyType
+            });
+            
+            // Cancel the 10-min timer and notify admin immediately
+            cancelFreezeTimer(normalizedPhone);
+            await promoteLeadToAdmin(normalizedPhone);
+        }
+
     } else {
         // Generic greeting — use standard welcome
         const welcomeMsg = `🏠 *Welcome to Trivastu Realty!* 🏠\n\nWe're one of the fastest-growing real estate companies in Jharkhand, helping you find your dream property.\n\nI'm ARIA, your personal AI assistant. To get started, please tell me your *full name*? 👤`;

@@ -143,27 +143,39 @@ router.post('/generate-ai', auth, authorize('admin', 'manager'), async (req, res
         const { prompt } = req.body;
         if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
 
+        if (!process.env.OPENAI_API_KEY) {
+            return res.status(503).json({ error: 'OpenAI API key is not configured on the server. Add OPENAI_API_KEY to the .env file and restart.' });
+        }
+
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o",
-            messages: [
-                {
-                    role: "system",
-                    content: "You are an elite, high-converting real estate marketing copywriter for Trivastu Realty. Combine premium luxury language with urgent FOMO. Write a highly persuasive WhatsApp broadcast message based on the user's prompt. Rules: 1. Keep it under 60 words for quick reading. 2. Use strategic grouping of matching emojis (e.g. 🏢✨). 3. Use bold formatting *like this* for prices, locations, and the core offer. 4. Focus strictly on benefits (ROI, lifestyle, savings). 5. End with a very clear, low-friction Call To Action to reply or click 'I am interested'. Do NOT use brackets like [Name] or [Link]. Make it sound remarkably human and highly exclusive. Do NOT include a header, footer, or buttons — those are added automatically."
-                },
-                {
-                    role: "user",
-                    content: prompt
-                }
-            ],
-            temperature: 0.7,
-            max_tokens: 250,
-        });
 
-        const bodyText = response.choices[0].message.content;
+        let aiResponse;
+        try {
+            aiResponse = await openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                    {
+                        role: "system",
+                        content: "You are an elite, high-converting real estate marketing copywriter for Trivastu Realty. Combine premium luxury language with urgent FOMO. Write a highly persuasive WhatsApp broadcast message based on the user's prompt. Rules: 1. Keep it under 60 words for quick reading. 2. Use strategic grouping of matching emojis (e.g. 🏢✨). 3. Use bold formatting *like this* for prices, locations, and the core offer. 4. Focus strictly on benefits (ROI, lifestyle, savings). 5. End with a very clear, low-friction Call To Action. Do NOT use brackets like [Name] or [Link]. Sound remarkably human and exclusive. Do NOT include a header, footer, or buttons — those are added automatically."
+                    },
+                    { role: "user", content: prompt }
+                ],
+                temperature: 0.7,
+                max_tokens: 250,
+            });
+        } catch (openaiErr) {
+            const status = openaiErr.status || 500;
+            const msg = openaiErr.message || 'OpenAI request failed';
+            logger.error('OpenAI API error:', status, msg);
+            if (status === 401) return res.status(503).json({ error: 'Invalid or expired OpenAI API key. Please update OPENAI_API_KEY in the server .env file.' });
+            if (status === 429) return res.status(503).json({ error: 'OpenAI rate limit reached. Please wait a minute and try again.' });
+            return res.status(503).json({ error: `AI generation failed: ${msg}` });
+        }
 
-        // Default Trivastu branding added automatically to every AI-generated campaign message
-        const defaultBranding = {
+        const bodyText = aiResponse.choices[0].message.content;
+
+        // Default Trivastu branding added automatically to every AI-generated message
+        res.json({
             header: 'TRIVASTU REALTY',
             body: bodyText,
             footer: 'Reply INFO for details.',
@@ -171,14 +183,14 @@ router.post('/generate-ai', auth, authorize('admin', 'manager'), async (req, res
                 { type: 'url', text: 'Visit Website', url: 'http://trivastu.com' },
                 { type: 'phone_number', text: 'Call Us', phone_number: '+917481824888' }
             ]
-        };
+        });
 
-        res.json(defaultBranding);
     } catch (error) {
         logger.error('AI generation error:', error);
-        res.status(500).json({ error: 'Failed to generate AI message' });
+        res.status(500).json({ error: 'Failed to generate AI message: ' + error.message });
     }
 });
+
 
 
 // ── 2.5 GET META TEMPLATES ──
