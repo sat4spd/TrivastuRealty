@@ -261,6 +261,37 @@ router.post('/', async (req, res) => {
                 const statuses = value.statuses || [];
                 for (const status of statuses) {
                     logger.debug(`📊 Status: ${status.status} for ${status.id}`);
+                    try {
+                        const wamid = status.id;
+                        const deliveryStatus = status.status;
+                        
+                        const logObj = await CampaignLog.findOne({ wamid }).select('deliveryStatus').lean();
+                        if (!logObj) continue;
+                        
+                        const statusWeights = { queued: 0, sent: 1, delivered: 2, read: 3, failed: 4 };
+                        const currentWeight = statusWeights[logObj.deliveryStatus] || 0;
+                        const newWeight = statusWeights[deliveryStatus] || 0;
+                        
+                        const updateData = {};
+                        if (newWeight >= currentWeight) {
+                            updateData.deliveryStatus = deliveryStatus;
+                            if (deliveryStatus === 'failed') updateData.status = 'failed';
+                        }
+                        
+                        if (deliveryStatus === 'sent') updateData.sentAt = new Date(status.timestamp * 1000 || Date.now());
+                        if (deliveryStatus === 'delivered') updateData.deliveredAt = new Date(status.timestamp * 1000 || Date.now());
+                        if (deliveryStatus === 'read') updateData.readAt = new Date(status.timestamp * 1000 || Date.now());
+                        if (deliveryStatus === 'failed') {
+                            updateData.failedAt = new Date(status.timestamp * 1000 || Date.now());
+                            updateData.failReason = status.errors ? status.errors.map(e => e.title).join(', ') : 'Unknown failure';
+                        }
+                        
+                        if (Object.keys(updateData).length > 0) {
+                            await CampaignLog.updateOne({ wamid }, { $set: updateData });
+                        }
+                    } catch (err) {
+                        logger.error('Failed to update campaign status:', err.message);
+                    }
                 }
             }
         }

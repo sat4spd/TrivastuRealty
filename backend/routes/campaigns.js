@@ -357,13 +357,22 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                         }
                         // If tmplDef couldn't be fetched → send with empty components (works for all-static templates)
                         logger.info(`[CAMPAIGN DEBUG] Final components: ${JSON.stringify(components)}`);
+                        
+                        let wamid = '';
                         // Send Official Meta Template
-                        await whatsappService.sendTemplate(
+                        const response = await whatsappService.sendTemplate(
                             contact.phone,
                             messageText, // templateName
                             components,  // dynamically crafted component array matches API exactly
                             true         // isBroadcast
                         );
+                        wamid = response?.messages?.[0]?.id || '';
+                        
+                        await CampaignLog.create({
+                            campaignId, phone: contact.phone, name: contact.name,
+                            status: 'success', deliveryStatus: 'sent', wamid, sentAt: new Date()
+                        });
+                        sent++;
                     } else {
                         // Personalize plain text AI message
                         let personalizedMsg = messageText;
@@ -373,6 +382,7 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                             personalizedMsg = personalizedMsg.replace(/\{\{name\}\}/gi, 'there');
                         }
 
+                        let wamid = '';
                         // If aiBranding is provided (structured message with buttons), send as interactive
                         if (aiBranding && aiBranding.buttons && aiBranding.buttons.length > 0) {
                             const headerText = aiBranding.header ? `🏢 *${aiBranding.header}*\n\n` : '';
@@ -380,41 +390,31 @@ router.post('/start', auth, authorize('admin', 'manager'), audit('start', 'campa
                             const fullBody = `${headerText}${personalizedMsg}${footerText}`;
 
                             // Send with interactive buttons
-                            await whatsappService.sendInteractiveButtons(
-                                contact.phone,
-                                fullBody,
-                                [
-                                    { id: 'visit_website', title: '🌐 Visit Website' },
-                                    { id: 'call_us', title: '📞 Call Us' }
-                                ],
+                            const response = await whatsappService.sendInteractiveButtons(
+                                contact.phone, fullBody,
+                                [{ id: 'visit_website', title: '🌐 Visit Website' }, { id: 'call_us', title: '📞 Call Us' }],
                                 true  // isBroadcast
                             );
+                            wamid = response?.messages?.[0]?.id || '';
                         } else {
                             // Send WhatsApp Message (Pure Text fallback)
-                            await whatsappService.sendTextMessage(
-                                contact.phone,
-                                personalizedMsg,
+                            const response = await whatsappService.sendTextMessage(
+                                contact.phone, personalizedMsg,
                                 true  // isBroadcast flag
                             );
+                            wamid = response?.messages?.[0]?.id || '';
                         }
+                        
+                        await CampaignLog.create({
+                            campaignId, phone: contact.phone, name: contact.name,
+                            status: 'success', deliveryStatus: 'sent', wamid, sentAt: new Date()
+                        });
+                        sent++;
                     }
-
-                    await CampaignLog.create({
-                        campaignId,
-                        phone: contact.phone,
-                        name: contact.name,
-                        status: 'success',
-                        sentAt: new Date()
-                    });
-                    sent++;
-
                 } catch (err) {
                     await CampaignLog.create({
-                        campaignId,
-                        phone: contact.phone,
-                        name: contact.name,
-                        status: 'failed',
-                        errorReason: err.message
+                        campaignId, phone: contact.phone, name: contact.name,
+                        status: 'failed', deliveryStatus: 'failed', failReason: err.message, errorReason: err.message
                     });
                     failed++;
                 }
@@ -480,9 +480,9 @@ router.get('/report/:id', auth, authorize('admin', 'manager'), async (req, res) 
         const logs = await CampaignLog.find({ campaignId: req.params.id }).sort({ sentAt: -1 }).lean();
         
         // Convert JSON to CSV manually
-        let csv = 'Phone,Name,Status,Error Reason,Sent At\n';
+        let csv = 'Phone,Name,Dispatch Status,Delivery Status,Error Reason,Sent At,Delivered At,Read At\n';
         for (const log of logs) {
-            csv += `${log.phone},${log.name || ''},${log.status},${log.errorReason || ''},${log.sentAt ? log.sentAt.toISOString() : ''}\n`;
+            csv += `${log.phone},${log.name || ''},${log.status},${log.deliveryStatus || 'queued'},${log.errorReason || log.failReason || ''},${log.sentAt ? log.sentAt.toISOString() : ''},${log.deliveredAt ? log.deliveredAt.toISOString() : ''},${log.readAt ? log.readAt.toISOString() : ''}\n`;
         }
 
         res.header('Content-Type', 'text/csv');

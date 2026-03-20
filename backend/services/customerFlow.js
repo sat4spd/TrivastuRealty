@@ -2,7 +2,7 @@ const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Property = require('../models/Property');
 const whatsappService = require('./whatsappService');
-const { searchByQuery, formatPropertyList, sendPropertyInteractiveList } = require('./matchingEngine');
+const { searchByQuery, formatPropertyList, sendPropertyInteractiveList, getCatalogueProperties } = require('./matchingEngine');
 
 const { notifyAdmin, ALERT_TYPES } = require('./notificationService');
 const { formatCurrency, parsePhone } = require('../utils/helpers');
@@ -577,7 +577,7 @@ const handleOnboardingStep = async (phone, text, user) => {
             );
 
             // Fetch matching properties instantly
-            const { properties: matches, matchTier } = await searchByQuery({
+            const { properties: matches, suggestions, matchTier } = await searchByQuery({
                 budget: user.budget,
                 location: user.locationPreference,
                 propertyType: user.propertyType,
@@ -603,7 +603,7 @@ const handleOnboardingStep = async (phone, text, user) => {
                 } else if (matchTier === 'general') {
                     await sendAndSave(phone, user, `🔍 I couldn't find exact matches in your location, but here are our newest properties... \n\n🌐 Explore everything at https://realty.trivastu.com`);
                 }
-                await sendPropertyInteractiveList(phone, matches);
+                await sendPropertyInteractiveList(phone, matches, null, suggestions);
             } else {
                 await sendAndSave(phone, user, `I'll alert my team and notify you when matching properties arrive. Let me know if you want to change any preferences or ask a question!`);
             }
@@ -622,6 +622,15 @@ const handleSmartMessage = async (phone, text, user) => {
         // Treat as if user typed the number (property detail request)
         const idx = propertyTapMatch[1];
         return handleSmartMessage(phone, idx, user);
+    }
+
+    if (text === 'browse_all') {
+        const catalogue = await getCatalogueProperties();
+        await sendPropertyInteractiveList(phone, catalogue, `🏠 *Our Complete Property Catalogue*\n\nTake your time & explore all our properties below:`);
+        user.addToHistory('user', "[Tapped Browse All]");
+        user.addToHistory('assistant', "[Sent Property Catalogue]");
+        await user.save();
+        return;
     }
 
     if (text === 'view_my_matches') {
@@ -643,7 +652,7 @@ const handleSmartMessage = async (phone, text, user) => {
             } else if (matchTier === 'general') {
                 await sendAndSave(phone, user, `🔍 I couldn't find exact matches, but here are our newest properties... \n\n🌐 Explore everything at https://realty.trivastu.com`);
             }
-            await sendPropertyInteractiveList(phone, matches);
+            await sendPropertyInteractiveList(phone, matches, null, suggestions);
         } else {
             await sendAndSave(phone, user, `No exact matches for ${user.locationPreference} under ${formatCurrency(user.budget)}. Want to try a different location or budget?`);
         }
@@ -673,9 +682,10 @@ const handleSmartMessage = async (phone, text, user) => {
                 const idx = (entities.propertyIndex || parseInt(text)) - 1;
                 // Query using last search context
                 const ctx = user.lastSearchContext?.location ? user.lastSearchContext : user;
-                const { properties: matches } = await searchByQuery({
+                const { properties: strictMatches, suggestions } = await searchByQuery({
                     budget: ctx.budget, location: ctx.locationPreference || ctx.location, propertyType: ctx.propertyType
                 });
+                const matches = [...(strictMatches || []), ...(suggestions || [])];
 
                 if (idx >= 0 && idx < matches.length) {
                     const prop = matches[idx];
@@ -723,13 +733,13 @@ const handleSmartMessage = async (phone, text, user) => {
                 if (updated) await user.save();
 
                 // Search database with NEW preferences
-                const { properties: ptList, matchTier } = await searchByQuery({
+                const { properties: ptList, suggestions, matchTier } = await searchByQuery({
                     budget: entities.budget || user.budget,
                     location: entities.location || user.locationPreference,
                     propertyType: entities.propertyType || user.propertyType,
                     bedrooms: entities.bedrooms
                 });
-                aiContextProperties = ptList;
+                aiContextProperties = [...(ptList || []), ...(suggestions || [])];
 
                 // Update context
                 user.lastSearchContext = {
@@ -742,10 +752,23 @@ const handleSmartMessage = async (phone, text, user) => {
                 await user.save();
 
                 if (updated && user.budget > 0) {
-                    await notifyAdmin('CUSTOMER_PREFS_UPDATED', {
-                        name: user.name, phone: user.phone, budget: user.budget,
-                        location: user.locationPreference
-                    });
+                    // Throttle notification: only alert if major change (>15% budget or diff location) AND 30+ mins passed
+                    const oldBudget = user.lastSearchContext?.budget || user.budget;
+                    const oldLocation = user.lastSearchContext?.location || user.locationPreference;
+                    const isMajorChange = 
+                        (entities.budget && Math.abs(entities.budget - oldBudget) / oldBudget > 0.15) ||
+                        (entities.location && entities.location.toLowerCase() !== oldLocation.toLowerCase());
+                    
+                    const thirtyMinsAgo = new Date(Date.now() - 30 * 60000);
+                    const notifiedRecently = user.lastPrefNotifiedAt && user.lastPrefNotifiedAt > thirtyMinsAgo;
+
+                    if (isMajorChange && !notifiedRecently) {
+                        await notifyAdmin('CUSTOMER_PREFS_UPDATED', {
+                            name: user.name, phone: user.phone, budget: user.budget,
+                            location: user.locationPreference
+                        });
+                        user.lastPrefNotifiedAt = new Date();
+                    }
 
                     // Update latest lead score dynamically
                     const latestLead = await Lead.findOne({ customerId: user._id }).sort({ createdAt: -1 });
@@ -823,10 +846,10 @@ const handleSmartMessage = async (phone, text, user) => {
 
                 // Fetch the context property just in case they are referring to the current search
                 const ctx = user.lastSearchContext?.location ? user.lastSearchContext : user;
-                const { properties: ptList, matchTier } = await searchByQuery({
+                const { properties: ptList, suggestions, matchTier } = await searchByQuery({
                     budget: ctx.budget, location: ctx.locationPreference || ctx.location, propertyType: ctx.propertyType
                 });
-                aiContextProperties = ptList;
+                aiContextProperties = [...(ptList || []), ...(suggestions || [])];
 
                 history[history.length - 1].content += financialContext; // sneaky inject
                 responseMsg = await generateResponse(text, history, user, aiContextProperties, matchTier);

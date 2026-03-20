@@ -44,7 +44,9 @@ const userSchema = new mongoose.Schema({
         recentlyViewed: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Property' }],
         savedProperties: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Property' }],
         budgetShifts: { type: Number, default: 0 }, // Track how often they change budget
-    }
+    },
+    // Throttle admin alerts for preference changes
+    lastPrefNotifiedAt: { type: Date, default: null }
 }, { timestamps: true });
 
 userSchema.index({ role: 1 });
