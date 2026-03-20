@@ -144,7 +144,7 @@ Ham Jharkhand ki trusted real estate company hain.
 Kindly fill the quick form below — main aapke liye best property options dhundhunga/dhundhugi! 🙏`;
 
         user.addToHistory('assistant', welcomeMsg);
-        user.conversationState = { flow: 'onboarding', step: STEPS.MENU, data: {} };
+        user.conversationState = { flow: 'onboarding', step: STEPS.ASK_NAME, data: {} };
         await user.save();
 
         // First send a warm text, then send the flow form
@@ -634,7 +634,7 @@ const handleSmartMessage = async (phone, text, user) => {
     }
 
     if (text === 'view_my_matches') {
-        const { properties: matches, matchTier } = await searchByQuery({
+        const { properties: matches, matchTier, suggestions } = await searchByQuery({
             budget: user.budget,
             location: user.locationPreference,
             propertyType: user.propertyType,
