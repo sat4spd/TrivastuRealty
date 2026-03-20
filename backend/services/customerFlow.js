@@ -741,6 +741,9 @@ const handleSmartMessage = async (phone, text, user) => {
                 });
                 aiContextProperties = [...(ptList || []), ...(suggestions || [])];
 
+                // Cache old context for alert throttling BEFORE overwriting
+                const oldSearchContext = user.lastSearchContext ? { ...user.lastSearchContext } : null;
+
                 // Update context
                 user.lastSearchContext = {
                     budget: entities.budget || user.budget,
@@ -753,8 +756,9 @@ const handleSmartMessage = async (phone, text, user) => {
 
                 if (updated && user.budget > 0) {
                     // Throttle notification: only alert if major change (>15% budget or diff location) AND 30+ mins passed
-                    const oldBudget = user.lastSearchContext?.budget || user.budget;
-                    const oldLocation = user.lastSearchContext?.location || user.locationPreference;
+                    const oldBudget = oldSearchContext?.budget || user.budget;
+                    const oldLocation = oldSearchContext?.location || user.locationPreference;
+                    
                     const isMajorChange = 
                         (entities.budget && Math.abs(entities.budget - oldBudget) / oldBudget > 0.15) ||
                         (entities.location && entities.location.toLowerCase() !== oldLocation.toLowerCase());
@@ -768,6 +772,7 @@ const handleSmartMessage = async (phone, text, user) => {
                             location: user.locationPreference
                         });
                         user.lastPrefNotifiedAt = new Date();
+                        await user.save();
                     }
 
                     // Update latest lead score dynamically
