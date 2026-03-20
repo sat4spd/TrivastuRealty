@@ -136,19 +136,141 @@ const handleNewCustomer = async (phone, initialMessage = '') => {
         }
 
     } else {
-        // Generic greeting — use standard welcome
-        const welcomeMsg = `🏠 *Welcome to Trivastu Realty!* 🏠\n\nWe're one of the fastest-growing real estate companies in Jharkhand, helping you find your dream property.\n\nI'm ARIA, your personal AI assistant. To get started, please tell me your *full name*? 👤`;
+        // Generic greeting — welcome with 3 action buttons
+        const welcomeMsg = `🏠 *Welcome to Trivastu Realty!*
+
+Ham Jharkhand ki fastest growing real estate company hain. Main ARIA hoon — aapki AI property advisor.
+
+Aapko kaise help kar sakti hoon?`;
 
         user.addToHistory('assistant', welcomeMsg);
         user.conversationState = { flow: 'onboarding', step: STEPS.ASK_NAME, data: {} };
         await user.save();
 
-        await whatsappService.sendTextMessage(normalizedPhone, welcomeMsg);
+        await whatsappService.sendInteractiveButtons(normalizedPhone, welcomeMsg, [
+            { id: 'start_form',      title: '📝 Share My Details' },
+            { id: 'view_properties', title: '🏠 Browse Properties' },
+            { id: 'connect_agent',   title: '📞 Talk to Agent' },
+        ]);
     }
 };
 
+// ── IN-WHATSAPP LEAD CAPTURE FORM (Q1 → Q5) ──
+// Drives a conversational form — same UX as the admin menu, no browser needed
+const FORM_STEPS = {
+    1: { field: 'name',         type: 'text' },
+    2: { field: 'budget',       type: 'buttons', options: [
+        { id: 'budget_u20',  title: 'Under ₹20 Lakh' },
+        { id: 'budget_2050', title: '₹20L – ₹50L' },
+        { id: 'budget_501cr', title: '₹50L – ₹1 Cr' },
+        { id: 'budget_1cr',  title: 'Above ₹1 Cr' },
+    ]},
+    3: { field: 'location',     type: 'buttons', options: [
+        { id: 'loc_ranchi',    title: 'Ranchi' },
+        { id: 'loc_tupudana',  title: 'Tupudana' },
+        { id: 'loc_nagri',     title: 'Nagri / Lodhma' },
+        { id: 'loc_other',     title: 'Other / Not sure' },
+    ]},
+    4: { field: 'propertyType', type: 'buttons', options: [
+        { id: 'type_plot',      title: '🌿 Plot / Land' },
+        { id: 'type_house',     title: '🏠 House / Villa' },
+        { id: 'type_apartment', title: '🏢 Apartment' },
+        { id: 'type_commercial',title: '🏪 Commercial' },
+    ]},
+    5: { field: 'timeline',     type: 'buttons', options: [
+        { id: 'time_now',      title: '⚡ Immediately' },
+        { id: 'time_3m',       title: '3 Months' },
+        { id: 'time_6m',       title: '6 Months' },
+        { id: 'time_1yr',      title: 'Over a Year' },
+    ]},
+};
 
-// ── RETURNING CUSTOMER ──
+const FORM_QUESTIONS = {
+    1: 'Aapka naam kya hai? 😊',
+    2: 'Aapka approximate budget kya hai?',
+    3: 'Aap kahan property dhundh rahe hain?',
+    4: 'Aapko kaunsa property type chahiye?',
+    5: 'Aap kab tak purchase karna chahte hain?',
+};
+
+const BUDGET_MAP = {
+    'budget_u20': 2000000,   // 20L
+    'budget_2050': 3500000,  // ~35L mid
+    'budget_501cr': 7500000, // ~75L mid
+    'budget_1cr': 15000000,  // 1.5Cr
+};
+
+const handleLeadForm = async (phone, user, text) => {
+    const normalizedPhone = parsePhone(phone);
+    const state = user.conversationState;
+    const formStep = state.data?.formStep || 1;
+    const formData = state.data?.formData || {};
+
+    // Save the answer from the previous step
+    if (formStep > 1) {
+        const prevStep = FORM_STEPS[formStep - 1];
+        if (prevStep.field === 'name') {
+            formData.name = text;
+            user.name = text.trim();
+        } else if (prevStep.field === 'budget') {
+            formData.budget = BUDGET_MAP[text] || null;
+        } else if (prevStep.field === 'location') {
+            const locMap = { loc_ranchi: 'Ranchi', loc_tupudana: 'Tupudana', loc_nagri: 'Nagri / Lodhma', loc_other: 'Other' };
+            formData.location = locMap[text] || text;
+        } else if (prevStep.field === 'propertyType') {
+            const typeMap = { type_plot: 'plot', type_house: 'villa', type_apartment: 'apartment', type_commercial: 'commercial' };
+            formData.propertyType = typeMap[text] || text;
+        } else if (prevStep.field === 'timeline') {
+            const timeMap = { time_now: 'immediate', time_3m: '3_months', time_6m: '6_months', time_1yr: '1_year' };
+            formData.timeline = timeMap[text] || text;
+        }
+    }
+
+    // If all 5 questions answered → promote lead
+    if (formStep > 5) {
+        const { updatePendingLead, promoteLeadToAdmin } = require('./leadFreezeService');
+        await updatePendingLead(normalizedPhone, {
+            name: formData.name,
+            budget: formData.budget,
+            location: formData.location,
+            propertyType: formData.propertyType,
+            timeline: formData.timeline,
+        });
+        if (formData.name) { user.name = formData.name; }
+        if (formData.budget) { user.budget = formData.budget; }
+        if (formData.location) { user.locationPreference = formData.location; }
+        if (formData.propertyType) { user.propertyType = formData.propertyType; }
+
+        await promoteLeadToAdmin(normalizedPhone);
+
+        user.conversationState = { flow: 'onboarding', step: STEPS.MENU, data: {} };
+        await user.save();
+
+        await whatsappService.sendInteractiveButtons(
+            normalizedPhone,
+            `✅ *Shukriya, ${formData.name || 'aap'}!*\n\nAapki details save ho gayi hain. Hamara advisor jald aapse connect karega.\n\nTab tak, kya main aapko kuch properties dikhaoon?`,
+            [
+                { id: 'view_properties', title: '🏠 See Properties' },
+                { id: 'connect_agent',   title: '📞 Talk to Agent' },
+            ]
+        );
+        return;
+    }
+
+    // Ask the current question
+    const currentStep = FORM_STEPS[formStep];
+    const question = FORM_QUESTIONS[formStep];
+
+    user.conversationState = { flow: 'in_form', step: 'form', data: { formStep: formStep + 1, formData } };
+    await user.save();
+
+    if (currentStep.type === 'buttons') {
+        await whatsappService.sendInteractiveButtons(normalizedPhone, question, currentStep.options);
+    } else {
+        await whatsappService.sendTextMessage(normalizedPhone, question);
+    }
+};
+
 const handleReturningCustomer = async (phone, user) => {
     const lastLead = await Lead.findOne({ customerId: user._id })
         .sort({ updatedAt: -1 })
@@ -192,6 +314,11 @@ const handleCustomerMessage = async (phone, message, user) => {
 
     // Log message
     user.addToHistory('user', text);
+
+    // ── ROUTE: In-WhatsApp Lead Form ──
+    if (state.flow === 'in_form') {
+        return handleLeadForm(phone, user, text);
+    }
 
     // If still in onboarding flow
     if (state.step && state.step !== STEPS.MENU) {

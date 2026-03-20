@@ -214,6 +214,22 @@ const getTemplates = async () => {
     }
 };
 
+// Send multiple messages to the same recipient with a natural delay between each
+// This mimics a human typing multiple short messages — much more natural than one long wall of text
+const sendSequentialMessages = async (to, messages, delayMs = 1200) => {
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (typeof msg === 'string') {
+            await sendTextMessage(to, msg);
+        } else if (msg.type === 'buttons') {
+            await sendInteractiveButtons(to, msg.body, msg.buttons);
+        }
+        if (i < messages.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+};
+
 module.exports = {
     sendTextMessage,
     sendInteractiveButtons,
@@ -224,4 +240,5 @@ module.exports = {
     getMediaUrl,
     downloadMedia,
     getTemplates,
+    sendSequentialMessages,
 };

@@ -62,6 +62,15 @@ const processMessage = async (phone, message, messageId) => {
             case 'customer':
                 if (user.conversationState?.flow === 'agent_registration') {
                     await handleAgentRegistrationFlow(normalizedPhone, text, user);
+                } else if (user.conversationState?.flow === 'in_form') {
+                    // Button-driven lead capture form — route straight to handleCustomerMessage which routes to handleLeadForm
+                    await handleCustomerMessage(normalizedPhone, text, user);
+                } else if (text === 'start_form') {
+                    // User tapped "Share My Details" from welcome buttons — start the in-WhatsApp lead form
+                    user.conversationState = { flow: 'in_form', step: 'form', data: { formStep: 1, formData: {} } };
+                    await user.save();
+                    const { handleLeadForm } = require('./customerFlow');
+                    await handleLeadForm(normalizedPhone, user, '');
                 } else if (user.conversationState?.flow === 'onboarding' || user.conversationState?.step) {
                     await handleCustomerMessage(normalizedPhone, text, user);
                 } else {

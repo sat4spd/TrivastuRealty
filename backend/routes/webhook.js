@@ -12,6 +12,32 @@ const Lead = require('../models/Lead');
 // Opt-out trigger phrases (Hindi + English)
 const OPT_OUT_PHRASES = ['stop', 'unsubscribe', 'opt out', 'optout', 'hatao', 'band karo', 'mat bhejo', 'no more', 'remove me', 'block'];
 
+// Auto-reply phrases — messages from automated systems / OOO bots (will be silently ignored)
+// These are checked as substrings (lowercased) so partial matches work
+const AUTO_REPLY_PHRASES = [
+    // OOO
+    'out of office', 'on leave', 'on vacation', 'away from office', 'returning on', 'back on',
+    // Automated signals
+    'auto reply', 'automatic reply', 'automated message', 'automated response', 'do not reply',
+    'do not respond', "don't reply", 'noreply', 'no-reply', 'this is an automated', 'this message is automated',
+    // Business acknowledgement bots
+    'thank you for contacting', 'thank you for reaching out', 'thanks for connecting',
+    'thanks for your message', 'thank you for your message', 'we have received your',
+    'we received your', 'your enquiry has been', 'your query has been', 'team will reach out',
+    'team will contact', 'we will get back', "we'll get back", 'in the meantime',
+    'during business hours', 'outside of business hours', 'outside business hours',
+    'our representative', 'our team will', 'will be attended',
+    // Hindi equivalents
+    'dhanyawad', 'shukriya', 'hum jald', 'team aapko', 'aapka sandesh mila', 'aapka message mila',
+];
+
+// Returns true if the message looks like an automated/bot response
+const isAutoReply = (text) => {
+    if (!text || text.length < 8) return false;
+    const lower = text.toLowerCase();
+    return AUTO_REPLY_PHRASES.some(phrase => lower.includes(phrase));
+};
+
 // Webhook verification (GET)
 router.get('/', (req, res) => {
     const mode = req.query['hub.mode'];
@@ -100,6 +126,12 @@ router.post('/', async (req, res) => {
                                     break;
                                 }
 
+                                // ── AUTO-REPLY DETECTION ──
+                                if (isAutoReply(text)) {
+                                    logger.info(`🤖 Auto-reply blocked from ${phone}: "${text.substring(0, 80)}"`);
+                                    break; // silently drop — do NOT create lead or reply
+                                }
+
                                 processMessage(phone, text, messageId).catch(err => {
                                     logger.error('Text message processing error:', err.message);
                                 });
@@ -145,6 +177,7 @@ router.post('/', async (req, res) => {
                             }
 
                             if (text) {
+                                // Route welcome action buttons to processMessage so flowEngine + customerFlow handle them
                                 processMessage(phone, text, messageId).catch(err => {
                                     logger.error('Interactive message processing error:', err.message);
                                 });
