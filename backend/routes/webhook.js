@@ -182,6 +182,25 @@ router.post('/', async (req, res) => {
                                     logger.error('Interactive message processing error:', err.message);
                                 });
                             }
+
+                            // ── WHATSAPP FLOW SUBMISSION (nfm_reply) ──
+                            // Fired when user completes and submits the WhatsApp native form
+                            if (message.interactive?.type === 'nfm_reply') {
+                                try {
+                                    const rawJson = message.interactive.nfm_reply?.response_json;
+                                    if (rawJson) {
+                                        const flowData = JSON.parse(rawJson);
+                                        logger.info(`📋 WhatsApp Flow submission from ${phone}:`, JSON.stringify(flowData).substring(0, 200));
+                                        const { handleFlowSubmission } = require('../services/customerFlow');
+                                        handleFlowSubmission(phone, flowData).catch(err => {
+                                            logger.error('Flow submission processing error:', err.message);
+                                        });
+                                    }
+                                } catch (e) {
+                                    logger.error('Failed to parse Flow nfm_reply:', e.message);
+                                }
+                            }
+
                             break;
                         }
 

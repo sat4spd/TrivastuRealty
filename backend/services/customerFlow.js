@@ -136,23 +136,80 @@ const handleNewCustomer = async (phone, initialMessage = '') => {
         }
 
     } else {
-        // Generic greeting — welcome with 3 action buttons
+        // Generic greeting — send the native WhatsApp Flow form immediately
         const welcomeMsg = `🏠 *Welcome to Trivastu Realty!*
 
-Ham Jharkhand ki fastest growing real estate company hain. Main ARIA hoon — aapki AI property advisor.
+Ham Jharkhand ki trusted real estate company hain.
 
-Aapko kaise help kar sakti hoon?`;
+Kindly fill the quick form below — main aapke liye best property options dhundhunga/dhundhugi! 🙏`;
 
         user.addToHistory('assistant', welcomeMsg);
-        user.conversationState = { flow: 'onboarding', step: STEPS.ASK_NAME, data: {} };
+        user.conversationState = { flow: 'onboarding', step: STEPS.MENU, data: {} };
         await user.save();
 
-        await whatsappService.sendInteractiveButtons(normalizedPhone, welcomeMsg, [
-            { id: 'start_form',      title: '📝 Share My Details' },
-            { id: 'view_properties', title: '🏠 Browse Properties' },
-            { id: 'connect_agent',   title: '📞 Talk to Agent' },
-        ]);
+        // First send a warm text, then send the flow form
+        await whatsappService.sendTextMessage(normalizedPhone, welcomeMsg);
+        await new Promise(r => setTimeout(r, 800));
+        await whatsappService.sendFlowMessage(normalizedPhone, {
+            headerText: 'Trivastu Realty 🏠',
+            bodyText: 'Tell us your property requirement in under 1 minute and our advisor will find the perfect match for you!',
+            ctaText: '📝 Fill My Details',
+        });
     }
+};
+
+// ── WHATSAPP FLOW FORM SUBMISSION HANDLER ──
+// Called from webhook.js when user submits the native WhatsApp Flow form (nfm_reply)
+// flowData is the payload from the CONFIRM screen's 'complete' action
+const handleFlowSubmission = async (phone, flowData) => {
+    const normalizedPhone = parsePhone(phone);
+    const { updatePendingLead, promoteLeadToAdmin, cancelFreezeTimer, ensurePendingLead } = require('./leadFreezeService');
+
+    // Map Meta Flow dropdown IDs to human-readable/db values
+    const BUDGET_MAP = { '10L': 1000000, '20L': 2000000, '50L': 5000000, '1CR': 10000000 };
+    const LOC_MAP = { ranchi: 'Ranchi', khunti: 'Khunti', nagari: 'Nagari', namkum: 'Namkum', other: flowData.other_location || 'Other' };
+
+    const name         = flowData.name?.trim();
+    const budget       = BUDGET_MAP[flowData.budget] || null;
+    const location     = LOC_MAP[flowData.location] || flowData.location || 'Not specified';
+    const propertyType = Array.isArray(flowData.property_type)
+                            ? flowData.property_type.join(', ')
+                            : (flowData.property_type || 'Not specified');
+    const timeline     = flowData.timeline || 'Not specified';
+    const marketing    = flowData.marketing_optin === true || flowData.marketing_optin === 'true';
+
+    logger.info(`📋 Flow form submitted from ${normalizedPhone}: ${name} | ${budget} | ${location} | ${propertyType}`);
+
+    // Update or create user profile
+    let user = await User.findOne({ phone: normalizedPhone });
+    if (!user) {
+        user = await User.create({ phone: normalizedPhone, role: 'customer', conversationState: { flow: 'onboarding', step: STEPS.MENU, data: {} } });
+    }
+    if (name) user.name = name;
+    if (budget) user.budget = budget;
+    if (location) user.locationPreference = location;
+    if (propertyType) user.propertyType = propertyType.split(',')[0].trim();
+    if (!marketing) user.marketingOptOut = true;
+    await user.save();
+
+    // Ensure lead exists and update it with full form data, then promote immediately
+    await ensurePendingLead(normalizedPhone, `Flow form submission: ${name}`, 'whatsapp');
+    await updatePendingLead(normalizedPhone, { name, budget, location, propertyType, timeline });
+    cancelFreezeTimer(normalizedPhone);
+    await promoteLeadToAdmin(normalizedPhone);
+
+    // Send confirmation message to user
+    const confirmMsg = `✅ *Shukriya, ${name || 'aap'}!*
+
+Aapki details successfully receive ho gayi hain.
+📞 Hamara advisor *24 ghante mein* aapse connect karega.
+
+Tab tak, kya aap kuch properties explore karna chahenge? 🏠`;
+
+    await whatsappService.sendInteractiveButtons(normalizedPhone, confirmMsg, [
+        { id: 'view_properties', title: '🏠 See Properties' },
+        { id: 'connect_agent',   title: '📞 Talk to Agent' },
+    ]);
 };
 
 // ── IN-WHATSAPP LEAD CAPTURE FORM (Q1 → Q5) ──
@@ -859,4 +916,5 @@ const resolvePropertyTypeLegacy = (text) => {
     return text; // fallback
 };
 
-module.exports = { handleNewCustomer, handleReturningCustomer, handleCustomerMessage, handleCustomerImage };
+module.exports = { handleNewCustomer, handleReturningCustomer, handleCustomerMessage, handleCustomerImage, handleFlowSubmission, handleLeadForm };
+

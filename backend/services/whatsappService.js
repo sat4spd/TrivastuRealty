@@ -214,7 +214,55 @@ const getTemplates = async () => {
     }
 };
 
+// Send a WhatsApp Flow (native in-app form) to a recipient
+// This triggers the real Meta native form inside WhatsApp — no browser needed
+const sendFlowMessage = async (to, { bodyText, ctaText, flowId, headerText } = {}) => {
+    try {
+        const fId = flowId || process.env.WHATSAPP_FLOW_ID;
+        if (!fId) {
+            logger.warn('sendFlowMessage: No WHATSAPP_FLOW_ID set in .env — falling back to text message');
+            return sendTextMessage(to, bodyText || 'Please share your details so we can find the best property for you! 🏠');
+        }
+
+        const payload = {
+            messaging_product: 'whatsapp',
+            to: cleanPhone(to),
+            type: 'interactive',
+            interactive: {
+                type: 'flow',
+                header: headerText ? { type: 'text', text: headerText } : undefined,
+                body: { text: bodyText || 'Please fill in your property requirements. Takes less than a minute! 🏠' },
+                footer: { text: 'Trivastu Realty — Trusted across Jharkhand' },
+                action: {
+                    name: 'flow',
+                    parameters: {
+                        flow_message_version: '3',
+                        flow_action: 'navigate',
+                        flow_id: fId,
+                        flow_cta: ctaText || '📝 Fill Details',
+                        flow_action_payload: { screen: 'JOIN_NOW' },
+                        mode: process.env.NODE_ENV === 'production' ? 'published' : 'draft',
+                    },
+                },
+            },
+        };
+
+        // Remove undefined header if not set
+        if (!headerText) delete payload.interactive.header;
+
+        const response = await api.post('/messages', payload);
+        logChat(to, 'outgoing', 'flow', 'WhatsApp Flow: Property Details Form');
+        logger.info(`📋 Flow message sent to ${to}`);
+        return response.data;
+    } catch (error) {
+        logger.error('Failed to send flow message:', error.response?.data || error.message);
+        // Graceful fallback
+        return sendTextMessage(to, 'Aapka naam, budget, aur preferred location share karein — main aapke liye best properties dhundhti hoon! 😊');
+    }
+};
+
 // Send multiple messages to the same recipient with a natural delay between each
+
 // This mimics a human typing multiple short messages — much more natural than one long wall of text
 const sendSequentialMessages = async (to, messages, delayMs = 1200) => {
     for (let i = 0; i < messages.length; i++) {
@@ -241,4 +289,5 @@ module.exports = {
     downloadMedia,
     getTemplates,
     sendSequentialMessages,
+    sendFlowMessage,
 };
